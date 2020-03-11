@@ -75,6 +75,29 @@ func (l *lexer) skipWhitespace() {
 	}
 }
 
+func (l *lexer) skipComment() {
+	if l.next != '#' {
+		panic("consumeComment used in wrong context")
+	}
+
+	// TODO: count and trim whitespace so we can dedent any following lines.
+	if l.scan.Peek() == ' ' {
+		l.scan.Next()
+	}
+
+	if l.comment.Len() > 0 {
+		l.comment.WriteRune('\n')
+	}
+
+	for {
+		next := l.scan.Next()
+		if next == '\r' || next == '\n' || next == scanner.EOF {
+			break
+		}
+		l.comment.WriteRune(next)
+	}
+}
+
 // If the next token is of the given kind, advance and skip whitespace.
 // Otherwise, do not change the parser state and return error.
 func (l *lexer) advance(expected rune) {
