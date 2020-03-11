@@ -50,7 +50,7 @@ type Object struct {
 	Name       string
 	Desc       string
 	Interfaces []Interface
-	Fields     map[string]Field
+	Fields     map[string]*Field
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -60,7 +60,7 @@ type Object struct {
 type Interface struct {
 	Name   string
 	Desc   string
-	Fields map[string]Field
+	Fields map[string]*Field
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -78,9 +78,10 @@ type Union struct {
 //
 // Note: If a value is not provided in a definition, the name of the enum value will be used as its internal value.
 type Enum struct {
-	Name   string
-	Values []string
-	Desc   string
+	Name       string
+	Values     []string
+	ReverseMap map[interface{}]string
+	Desc       string
 }
 
 // An input object defines a structured collection of fields which may be supplied to a field argument.
@@ -143,7 +144,7 @@ type FieldResolve func(ctx context.Context, source interface{}, args map[string]
 
 type Field struct {
 	Type    Type
-	Args    map[string]Argument
+	Args    map[string]*Argument
 	Resolve FieldResolve
 	Desc    string
 }
