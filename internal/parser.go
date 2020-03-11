@@ -8,7 +8,13 @@ import (
 	"text/scanner"
 )
 
-func Parse(source string) (*ast.Document, *errors.GraphQLError) {
+type Query struct {
+	Name string
+	Kind string
+	*ast.SelectionSet
+}
+
+func ParseDocument(source string) (*ast.Document, *errors.GraphQLError) {
 	l := NewLexer(source, false)
 
 	var doc *ast.Document
