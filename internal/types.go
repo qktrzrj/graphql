@@ -1,4 +1,4 @@
-package shcemabuilder
+package internal
 
 import (
 	"context"
@@ -13,11 +13,27 @@ type Type interface {
 	IsType()
 }
 
+var _ Type = (*Scalar)(nil)
+var _ Type = (*Object)(nil)
+var _ Type = (*Interface)(nil)
+var _ Type = (*List)(nil)
+var _ Type = (*InputObject)(nil)
+var _ Type = (*NonNull)(nil)
+var _ Type = (*Enum)(nil)
+var _ Type = (*Union)(nil)
+
 type NamedType interface {
 	Type
 	TypeName() string
 	Description() string
 }
+
+var _ NamedType = (*Scalar)(nil)
+var _ NamedType = (*Object)(nil)
+var _ NamedType = (*Interface)(nil)
+var _ NamedType = (*InputObject)(nil)
+var _ NamedType = (*Enum)(nil)
+var _ NamedType = (*Union)(nil)
 
 // The leaf values of any request and input values to arguments are Scalars (or Enums)
 // and are defined with a name and a series of serialization functions used to ensure validity.
@@ -122,22 +138,6 @@ func (t *Interface) Description() string   { return t.Desc }
 func (t *Union) Description() string       { return t.Desc }
 func (t *Enum) Description() string        { return t.Desc }
 func (t *InputObject) Description() string { return t.Desc }
-
-var _ Type = (*Scalar)(nil)
-var _ Type = (*Object)(nil)
-var _ Type = (*Interface)(nil)
-var _ Type = (*List)(nil)
-var _ Type = (*InputObject)(nil)
-var _ Type = (*NonNull)(nil)
-var _ Type = (*Enum)(nil)
-var _ Type = (*Union)(nil)
-
-var _ NamedType = (*Scalar)(nil)
-var _ NamedType = (*Object)(nil)
-var _ NamedType = (*Interface)(nil)
-var _ NamedType = (*InputObject)(nil)
-var _ NamedType = (*Enum)(nil)
-var _ NamedType = (*Union)(nil)
 
 type FieldResolve func(ctx context.Context, source interface{}, args map[string]interface{}) (interface{}, error)
 

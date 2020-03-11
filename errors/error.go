@@ -17,7 +17,7 @@ func (err *GraphQLError) Error() string {
 	}
 	str := fmt.Sprintf("graphql: %s", err.Message)
 	for _, loc := range err.Locations {
-		str += fmt.Sprintf("%d:%d\n", loc.Line, loc.Column)
+		str += fmt.Sprintf(" (%d:%d)\n", loc.Line, loc.Column)
 	}
 	return str
 }

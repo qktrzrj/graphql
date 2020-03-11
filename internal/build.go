@@ -1,4 +1,4 @@
-package shcemabuilder
+package internal
 
 import (
 	"github.com/unrotten/graphql"
