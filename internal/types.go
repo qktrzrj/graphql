@@ -49,7 +49,7 @@ type Scalar struct {
 type Object struct {
 	Name       string
 	Desc       string
-	Interfaces []Interface
+	Interfaces []*Interface
 	Fields     map[string]*Field
 }
 
