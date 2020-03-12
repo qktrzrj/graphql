@@ -5,26 +5,32 @@ import (
 	"time"
 )
 
-type Context struct {
+type Context interface {
+	Deadline() (deadline time.Time, ok bool)
+	Done() <-chan struct{}
+	Err() error
+	Value(key interface{}) interface{}
+}
+
+type context struct {
 	Request *http.Request
 	Writer  http.ResponseWriter
 	// Keys is a key/value pair exclusively for the context of each request.
-	Keys        map[interface{}]interface{}
-	HandleChain []HandleFunc
+	Keys map[interface{}]interface{}
 }
 
-func (c Context) Deadline() (deadline time.Time, ok bool) {
+func (c *context) Deadline() (deadline time.Time, ok bool) {
 	return
 }
 
-func (c Context) Done() <-chan struct{} {
+func (c *context) Done() <-chan struct{} {
 	return nil
 }
 
-func (c Context) Err() error {
+func (c *context) Err() error {
 	return nil
 }
 
-func (c Context) Value(key interface{}) interface{} {
+func (c *context) Value(key interface{}) interface{} {
 	return c.Keys[key]
 }

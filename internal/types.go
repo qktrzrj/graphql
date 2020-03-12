@@ -49,7 +49,7 @@ type Scalar struct {
 type Object struct {
 	Name       string
 	Desc       string
-	Interfaces []*Interface
+	Interfaces map[string]*Interface
 	Fields     map[string]*Field
 }
 
@@ -158,5 +158,11 @@ type Argument struct {
 type InputField struct {
 	Type         Type
 	DefaultValue interface{}
-	Desc         string
+}
+
+//Schema used to validate and resolve the queries
+type Schema struct {
+	Query        Type
+	Mutation     Type
+	Subscription Type
 }
