@@ -34,3 +34,7 @@ func (c *context) Err() error {
 func (c *context) Value(key interface{}) interface{} {
 	return c.Keys[key]
 }
+
+func (c *context) Set(key, value interface{}) {
+	c.Keys[key] = value
+}

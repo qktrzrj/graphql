@@ -6,30 +6,27 @@ import (
 	"fmt"
 	"github.com/unrotten/graphql/internal"
 	"reflect"
-	"sort"
 	"strconv"
 )
 
 type Schema struct {
 	objects      map[string]*Object
-	enumTypes    map[reflect.Type]*EnumMapping
+	enums        map[string]*Enum
 	inputObjects map[string]*InputObject
 	interfaces   map[string]*Interface
 	unions       map[string]*Union
-	scalars      map[reflect.Type]*Scalar
-	scalarNames  []string
+	scalars      map[string]*Scalar
 }
 
 // NewSchema creates a new schema.
 func NewSchema() *Schema {
 	schema := &Schema{
 		objects:      map[string]*Object{},
-		enumTypes:    map[reflect.Type]*EnumMapping{},
+		enums:        map[string]*Enum{},
 		inputObjects: map[string]*InputObject{},
 		interfaces:   map[string]*Interface{},
 		unions:       map[string]*Union{},
 		scalars:      scalars,
-		scalarNames:  scalarNames,
 	}
 
 	return schema
@@ -48,62 +45,51 @@ func NewSchema() *Schema {
 //   )
 //
 // Then the Enum can be registered as:
-//   s.Enum(enumType(1), map[string]interface{}{
+//   s.Enum("number",enumType(1), map[string]interface{}{
 //     "one":   {enumType(1),"the first one"},
 //     "two":   enumType(2),
 //     "three": enumType(3),
 //   },"")
-func (s *Schema) Enum(val interface{}, enumMap interface{}, desc string) {
-	typ := reflect.TypeOf(val)
-	if s.enumTypes == nil {
-		s.enumTypes = make(map[reflect.Type]*EnumMapping)
+func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface{}, desc string) {
+	if _, ok := s.enums[name]; ok {
+		panic(fmt.Sprintf("duplicate enum %s", name))
 	}
-	s.enumTypes[typ] = getEnumMap(enumMap, typ)
-	s.enumTypes[typ].Desc = desc
-}
-
-func getEnumMap(enumMap interface{}, typ reflect.Type) *EnumMapping {
+	typ := reflect.TypeOf(val)
+	if s.enums == nil {
+		s.enums = make(map[string]*Enum)
+	}
 	rMap := make(map[interface{}]string)
 	eMap := make(map[string]interface{})
 	dMap := make(map[string]string)
-	v := reflect.ValueOf(enumMap)
-	if v.Kind() == reflect.Map {
-		for _, key := range v.MapKeys() {
-			desc := ""
-			val := v.MapIndex(key)
-
-			valInterface := val.Interface()
-			if val.Kind() != typ.Kind() {
-				if val.Kind() == reflect.Struct {
-					if val.NumField() != 2 {
-						panic(fmt.Sprintf("%s enum value's fields should be 2.", typ.Name()))
-					}
-					field := val.Field(0)
-					fieldDesc := val.Field(1)
-					if field.Kind() != typ.Kind() {
-						panic("enum types are not equal")
-					}
-					if fieldDesc.Kind() != reflect.String {
-						panic("enum member's desc must be string")
-					}
-					desc = fieldDesc.String()
-					valInterface = field.Interface()
+	for key, valInterface := range enumMap {
+		desc := ""
+		val := reflect.ValueOf(valInterface)
+		if val.Kind() != typ.Kind() {
+			if val.Kind() == reflect.Struct {
+				if val.NumField() != 2 {
+					panic("if enumMap's value is struct,then fieldNum must be 2.")
 				}
-				panic("enum types are not equal")
+				field := val.Field(0)
+				fieldDesc := val.Field(1)
+				if field.Kind() != typ.Kind() {
+					panic("enumMap's value types are not equal")
+				}
+				if fieldDesc.Kind() != reflect.String {
+					panic("enum value's desc must be string")
+				}
+				desc = fieldDesc.String()
+				valInterface = field.Interface()
 			}
-			if key.Kind() == reflect.String {
-				eMap[key.String()] = valInterface
-				rMap[valInterface] = key.String()
-				dMap[key.String()] = desc
-			} else {
-				panic("keys are not strings")
-			}
+			panic("enum types are not equal")
 		}
-	} else {
-		panic("enum function not passed a map")
+		eMap[key] = valInterface
+		rMap[valInterface] = key
+		dMap[key] = desc
 	}
-	return &EnumMapping{
-		Name:       typ.Name(),
+	s.enums[name] = &Enum{
+		Name:       name,
+		Desc:       desc,
+		Type:       val,
 		Map:        eMap,
 		ReverseMap: rMap,
 		DescMap:    dMap,
@@ -117,7 +103,9 @@ func getEnumMap(enumMap interface{}, typ reflect.Type) *EnumMapping {
 func (s *Schema) Object(name string, typ interface{}, desc string, options ...FieldFuncOption) *Object {
 	if object, ok := s.objects[name]; ok {
 		if reflect.TypeOf(object) != reflect.TypeOf(typ) {
-			panic("re-registered object with different type")
+			var t = reflect.TypeOf(object.Type)
+			panic(fmt.Sprintf("re-registered input object with different type, already registered type:"+
+				" %s.%s", t.PkgPath(), t.Name()))
 		}
 		return object
 	}
@@ -142,7 +130,8 @@ func (s *Schema) InputObject(name string, typ interface{}) *InputObject {
 	if inputObject, ok := s.inputObjects[name]; ok {
 		if reflect.TypeOf(inputObject.Type) != reflect.TypeOf(typ) {
 			var t = reflect.TypeOf(inputObject.Type)
-			panic("re-registered input object with different type, already registered type :" + fmt.Sprintf(" %s.%s", t.PkgPath(), t.Name()))
+			panic(fmt.Sprintf("re-registered input object with different type, already registered type:"+
+				" %s.%s", t.PkgPath(), t.Name()))
 		}
 	}
 	inputObject := &InputObject{
@@ -185,17 +174,13 @@ func (s *Schema) InputObject(name string, typ interface{}) *InputObject {
 //}
 func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...UnmarshalFunc) {
 
-	if i := sort.SearchStrings(s.scalarNames, name); i != 0 || name == s.scalarNames[0] {
+	if _, ok := s.scalars[name]; ok {
 		panic("duplicate scalar name")
 	}
 
 	typ := reflect.TypeOf(tp)
 	if typ.Kind() == reflect.Ptr {
 		panic("type should not be of pointer type")
-	}
-
-	if _, ok := s.scalars[typ]; ok {
-		panic("duplicate scalar type")
 	}
 
 	if len(ufn) == 0 {
@@ -235,25 +220,25 @@ func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...Unmarsh
 	scalar := &Scalar{
 		Name:      name,
 		Desc:      desc,
+		Type:      tp,
 		Serialize: Serialize,
-		ParseValue: func(i interface{}, out reflect.Type) (interface{}, error) {
-			outVal := reflect.New(out).Elem()
+		ParseValue: func(i interface{}) (interface{}, error) {
+			outVal := reflect.New(typ).Elem()
 			err := ufn[0](i, outVal)
 			return outVal, err
 		},
 	}
-	s.scalars[typ] = scalar
-	s.scalarNames = append(s.scalarNames, name)
+	s.scalars[name] = scalar
 }
 
 // Union registers a map as a GraphQL Union in our Schema.
-func (s *Schema) Union(name string, desc string, union interface{}) {
-	if _, ok := s.unions[name]; ok {
-		panic("duplicate union of " + name)
-	}
+func (s *Schema) Union(name string, union interface{}, desc string) {
 	typ := reflect.TypeOf(union)
 	if typ.Kind() != reflect.Struct {
 		panic("union must be a struct")
+	}
+	if _, ok := s.unions[name]; ok {
+		panic("duplicate union " + name)
 	}
 
 	types := make([]reflect.Type, typ.NumField())
@@ -273,7 +258,7 @@ func (s *Schema) Union(name string, desc string, union interface{}) {
 }
 
 // Interface registers a Interface as a GraphQL Interface in our Schema.
-func (s *Schema) Interface(name string, desc string, typ interface{}) *Interface {
+func (s *Schema) Interface(name string, desc string, typ interface{}, fn interface{}) *Interface {
 
 	if reflect.TypeOf(typ).Kind() != reflect.Interface {
 		panic("Interface must be a interface Type in Golang")
@@ -286,6 +271,7 @@ func (s *Schema) Interface(name string, desc string, typ interface{}) *Interface
 		Name: name,
 		Desc: desc,
 		Type: typ,
+		Fn:   fn,
 	}
 }
 
@@ -320,14 +306,14 @@ func (s *Schema) Subscription() *Object {
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
 func (s *Schema) Build() (*internal.Schema, error) {
 	sb := &schemaBuilder{
-		types:        make(map[reflect.Type]internal.Type),
-		objects:      make(map[reflect.Type]*Object),
-		enumMappings: s.enumTypes,
-		typeCache:    make(map[reflect.Type]cachedType, 0),
-		inputObjects: make(map[reflect.Type]*InputObject, 0),
-		interfaces:   make(map[reflect.Type]*Interface, 0),
-		scalars:      s.scalars,
-		unions:       s.unions,
+		types: make(map[reflect.Type]internal.Type, len(s.objects)+len(s.enums)+len(s.inputObjects)+len(s.interfaces)+
+			len(s.scalars)+len(s.unions)),
+		objects:      make(map[reflect.Type]*Object, len(s.objects)),
+		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
+		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
+		interfaces:   make(map[reflect.Type]*Interface, len(s.interfaces)),
+		scalars:      make(map[reflect.Type]*Scalar, len(s.scalars)),
+		unions:       make(map[reflect.Type]*Union, len(s.unions)),
 	}
 
 	for _, object := range s.objects {
@@ -356,6 +342,17 @@ func (s *Schema) Build() (*internal.Schema, error) {
 		sb.inputObjects[typ] = inputObject
 	}
 
+	for _, enum := range s.enums {
+		typ := reflect.TypeOf(enum.Type)
+		if typ.Kind() == reflect.Ptr {
+			return nil, fmt.Errorf("Enum.Type should not be a pointer")
+		}
+		if _, ok := sb.enums[typ]; ok {
+			return nil, fmt.Errorf("duplicate enum for %s", typ.String())
+		}
+		sb.enums[typ] = enum
+	}
+
 	for _, inter := range s.interfaces {
 		typ := reflect.TypeOf(inter.Type)
 		if typ.Kind() != reflect.Interface {
@@ -367,6 +364,28 @@ func (s *Schema) Build() (*internal.Schema, error) {
 		}
 
 		sb.interfaces[typ] = inter
+	}
+
+	for _, scalar := range s.scalars {
+		typ := reflect.TypeOf(scalar.Type)
+		if typ.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("Scalar.Type should  be a struct")
+		}
+		if _, ok := sb.scalars[typ]; ok {
+			return nil, fmt.Errorf("duplicate scalar for %s", typ.String())
+		}
+		sb.scalars[typ] = scalar
+	}
+
+	for _, union := range s.unions {
+		typ := reflect.TypeOf(union.Type)
+		if typ.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("Scalar.Type should  be a struct")
+		}
+		if _, ok := sb.unions[typ]; ok {
+			return nil, fmt.Errorf("duplicate union for %s", typ.String())
+		}
+		sb.unions[typ] = union
 	}
 
 	queryTyp, err := sb.getType(reflect.TypeOf(&query{}))

@@ -1,10 +1,9 @@
 package schemabuilder
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
-	"github.com/unrotten/graphql"
 	"reflect"
 )
 
@@ -27,15 +26,11 @@ type InputObject struct {
 	Fields map[string]*inputFieldResolve
 }
 
-type HandleFunc func(ctx graphql.Context) error
+type HandleFunc func(ctx context.Context) error
 
 // FieldFuncOption is an func for the variadic options that can be passed
 // to a FieldFunc for configuring options on that function.
 type FieldFuncOption func(resolve ...*fieldResolve) HandleFunc
-
-// InputFieldFuncOption is an func for the variadic options that can be passed
-// to a InputFieldFunc for configuring options on that function.
-type InputFieldFuncOption func(resolve *inputFieldResolve)
 
 var NonNullField FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
 	if len(resolve) > 0 {
@@ -44,14 +39,11 @@ var NonNullField FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
 	return nil
 }
 
-var NonNullInputField InputFieldFuncOption = func(resolve *inputFieldResolve) {
-	resolve.MarkedNonNullable = true
-}
-
-// EnumMapping is a representation of an enum that includes both the mapping and reverse mapping.
-type EnumMapping struct {
+// Enum is a representation of an enum that includes both the mapping and reverse mapping.
+type Enum struct {
 	Name       string
 	Desc       string
+	Type       interface{}
 	Map        map[string]interface{}
 	ReverseMap map[interface{}]string
 	DescMap    map[string]string
@@ -59,15 +51,18 @@ type EnumMapping struct {
 
 // Interface is a representation of graphql interface
 type Interface struct {
-	Name string
-	Desc string
-	Type interface{}
+	Name         string
+	Desc         string
+	Type         interface{}
+	Fn           interface{}
+	FieldResolve map[string]*fieldResolve
 }
 
 // Union is a representation of graphql union
 type Union struct {
 	Name  string
 	Desc  string
+	Type  interface{}
 	Types []reflect.Type
 }
 
@@ -75,8 +70,9 @@ type Union struct {
 type Scalar struct {
 	Name       string
 	Desc       string
+	Type       interface{}
 	Serialize  func(interface{}) (interface{}, error)
-	ParseValue func(interface{}, reflect.Type) (interface{}, error)
+	ParseValue func(interface{}) (interface{}, error)
 }
 
 // FieldFunc exposes a field on an object. The function f can take a number of
@@ -98,6 +94,9 @@ type Scalar struct {
 //        return userID, err
 //    })
 func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOption ...FieldFuncOption) {
+	if getField(s.Type, name) == nil {
+		panic("Object FieldFunc param name must be the name or tag of struct field")
+	}
 	if s.FieldResolve == nil {
 		s.FieldResolve = make(map[string]*fieldResolve)
 	}
@@ -116,46 +115,42 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 	s.FieldResolve[name] = resolve
 }
 
-// FieldFunc is used to expose the fields of an input object and determine the method to fill it
-// type ServiceProvider struct {
-// 	Id                   string
-// 	FirstName            string
-// }
-// inputObj := schema.InputObject("serviceProvider", ServiceProvider{})
-// inputObj.FieldFunc("Id", func(target *ServiceProvider, source *schemabuilder.ID) {
-// 	target.Id = source.Value
-// })
-// inputObj.FieldFunc("firstName", func(target *ServiceProvider, source *string) {
-// 	target.FirstName = *source
-// })
-// The target variable of the function should be pointer
-func (io *InputObject) FieldFunc(name string, fn interface{}, fieldFuncOption ...InputFieldFuncOption) {
-	funcTyp := reflect.TypeOf(fn)
-
-	if funcTyp.NumIn() != 2 || funcTyp.NumIn() != 3 {
-		panic(fmt.Errorf("can not register field %v on %v as number of input argument should be 2 or 3", name, io.Name))
+// FieldFunc is used to expose the fields of an input object
+func (io *InputObject) FieldFunc(name string, defaultValue interface{}) {
+	if getField(io.Type, name) == nil {
+		panic("inputObject FieldFunc param name must be the name or tag of struct field")
 	}
-
-	sourceTyp := funcTyp.In(0)
-	if sourceTyp.Kind() != reflect.Ptr {
-		panic(fmt.Errorf("can not register %s on input object %s as the first argument of the function is not a pointer type", name, io.Name))
+	if _, ok := io.Fields[name]; ok {
+		panic("duplicate name")
 	}
-
-	if funcTyp.NumOut() > 2 {
-		panic(fmt.Errorf("can not register field %v on %v as number of output parameters should be less than 2", name, io.Name))
-	}
-
-	resolve := &inputFieldResolve{Fn: fn}
-	for _, opt := range fieldFuncOption {
-		opt(resolve)
-	}
-
+	resolve := &inputFieldResolve{DefaultValue: defaultValue}
 	io.Fields[name] = resolve
 }
 
 // InterfaceFunc exposes a interface on an object.
 func (s *Object) InterfaceFunc(list ...*Interface) {
 	s.Interface = append(s.Interface, list...)
+}
+
+// similar as object's func, but haven't middleware func , and given name must be same as interface's method
+func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
+	if getMethod(s.Type, name) == nil {
+		panic("Interface FieldFunc param name must be the name of interface's method")
+	}
+	if s.FieldResolve == nil {
+		s.FieldResolve = make(map[string]*fieldResolve)
+	}
+
+	if _, ok := s.FieldResolve[name]; ok {
+		panic("duplicate method")
+	}
+	typ := reflect.TypeOf(s.Type)
+	if _, ok := typ.MethodByName(name); !ok {
+		panic("interfaces func's name must be same as method")
+	}
+
+	resolve := &fieldResolve{Fn: fn, Desc: desc}
+	s.FieldResolve[name] = resolve
 }
 
 type fieldResolve struct {
@@ -166,8 +161,7 @@ type fieldResolve struct {
 }
 
 type inputFieldResolve struct {
-	MarkedNonNullable bool
-	Fn                interface{}
+	DefaultValue interface{}
 }
 
 // UnmarshalFunc is used to unmarshal scalar value from JSON
@@ -176,8 +170,9 @@ type UnmarshalFunc func(value interface{}, dest reflect.Value) error
 var Boolean = &Scalar{
 	Name:      "Boolean",
 	Desc:      "bool is the set of boolean values, true and false.",
+	Type:      bool(false),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		asBool, ok := value.(bool)
 		if !ok {
 			if value == nil {
@@ -186,15 +181,16 @@ var Boolean = &Scalar{
 				return nil, errors.New("not a bool")
 			}
 		}
-		return reflect.ValueOf(asBool).Convert(out), nil
+		return reflect.ValueOf(asBool).Convert(reflect.TypeOf(bool(false))), nil
 	},
 }
 
 var Int = &Scalar{
 	Name:      "Int",
 	Desc:      "int is a signed integer type that is at least 32 bits in size.",
+	Type:      int(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -203,15 +199,16 @@ var Int = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(int(0))), nil
 	},
 }
 
 var Int8 = &Scalar{
 	Name:      "Int8",
 	Desc:      "int8 is the set of all signed 8-bit integers. Range: -128 through 127.",
+	Type:      int8(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -220,15 +217,16 @@ var Int8 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(int8(0))), nil
 	},
 }
 
 var Int16 = &Scalar{
 	Name:      "Int16",
 	Desc:      "int16 is the set of all signed 16-bit integers. Range: -32768 through 32767.",
+	Type:      int16(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -237,15 +235,16 @@ var Int16 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(int16(0))), nil
 	},
 }
 
 var Int32 = &Scalar{
 	Name:      "Int32",
 	Desc:      "int32 is the set of all signed 32-bit integers. Range: -2147483648 through 2147483647.",
+	Type:      int32(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -254,15 +253,16 @@ var Int32 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(int32(0))), nil
 	},
 }
 
 var Int64 = &Scalar{
 	Name:      "Int64",
 	Desc:      "int64 is the set of all signed 64-bit integers. Range: -9223372036854775808 through 9223372036854775807.",
+	Type:      int64(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -271,15 +271,16 @@ var Int64 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(int64(0))), nil
 	},
 }
 
 var Uint = &Scalar{
 	Name:      "Uint",
 	Desc:      "uint is an unsigned integer type that is at least 32 bits in size.",
+	Type:      uint(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -288,15 +289,16 @@ var Uint = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint(0))), nil
 	},
 }
 
 var Uint8 = &Scalar{
 	Name:      "Uint8",
 	Desc:      "uint8 is the set of all unsigned 8-bit integers. Range: 0 through 255.",
+	Type:      uint8(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -305,15 +307,16 @@ var Uint8 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint(8))), nil
 	},
 }
 
 var Uint16 = &Scalar{
 	Name:      "Uint16",
 	Desc:      "uint16 is the set of all unsigned 16-bit integers. Range: 0 through 65535.",
+	Type:      uint16(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -322,15 +325,16 @@ var Uint16 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint16(0))), nil
 	},
 }
 
 var Uint32 = &Scalar{
 	Name:      "Uint32",
 	Desc:      "uint32 is the set of all unsigned 32-bit integers. Range: 0 through 4294967295.",
+	Type:      uint32(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -339,15 +343,16 @@ var Uint32 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint32(0))), nil
 	},
 }
 
 var Uint64 = &Scalar{
 	Name:      "Uint64",
 	Desc:      "uint64 is the set of all unsigned 64-bit integers. Range: 0 through 18446744073709551615.",
+	Type:      uint64(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -356,15 +361,16 @@ var Uint64 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint64(0))), nil
 	},
 }
 
 var Float = &Scalar{
 	Name:      "Float",
 	Desc:      "float is the set of all IEEE-754 32-bit floating-point numbers.",
+	Type:      float32(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -373,15 +379,16 @@ var Float = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(out), nil
+		return reflect.ValueOf(val).Convert(reflect.TypeOf(float32(0))), nil
 	},
 }
 
 var Float64 = &Scalar{
 	Name:      "Float",
 	Desc:      "float is the set of all IEEE-754 32-bit floating-point numbers.",
+	Type:      float64(0),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(float64)
 		if !ok {
 			if value == nil {
@@ -398,8 +405,9 @@ var String = &Scalar{
 	Name: "String",
 	Desc: "string is the set of all strings of 8-bit bytes, conventionally but not necessarily representing " +
 		"UTF-8-encoded text. A string may be empty, but not nil. Values of string type are immutable.",
+	Type:      string(""),
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		val, ok := value.(string)
 		if !ok {
 			if value == nil {
@@ -423,9 +431,10 @@ func (i *Id) MarshalJSON() ([]byte, error) {
 
 var ID = &Scalar{
 	Name:      "ID",
-	Desc:      "",
+	Desc:      "ID",
+	Type:      Id{},
 	Serialize: Serialize,
-	ParseValue: func(value interface{}, out reflect.Type) (interface{}, error) {
+	ParseValue: func(value interface{}) (interface{}, error) {
 		switch val := value.(type) {
 		case string:
 			return Id{Value: val}, nil
@@ -434,15 +443,4 @@ var ID = &Scalar{
 		}
 		return nil, errors.New("not a ID")
 	},
-}
-
-// isScalarType checks whether a reflect.Type is scalar or not
-func isScalarType(s *schemaBuilder, t reflect.Type) bool {
-	_, ok := s.scalars[t]
-	return ok
-}
-
-// typesIdenticalOrScalarAliases checks whether a & b are same scalar
-func typesIdenticalOrScalarAliases(s *schemaBuilder, a, b reflect.Type) bool {
-	return a == b || (a.Kind() == b.Kind() && (a.Kind() != reflect.Struct) && (a.Kind() != reflect.Map) && isScalarType(s, a))
 }

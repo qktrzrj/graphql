@@ -58,9 +58,10 @@ type Object struct {
 // what fields are in common across all types,
 // as well as a function to determine which type is actually used when the field is resolved.
 type Interface struct {
-	Name   string
-	Desc   string
-	Fields map[string]*Field
+	Name    string
+	Desc    string
+	Resolve TypeResolve
+	Fields  map[string]*Field
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -80,6 +81,7 @@ type Union struct {
 type Enum struct {
 	Name       string
 	Values     []string
+	ValuesDesc []string
 	ReverseMap map[interface{}]string
 	Desc       string
 }
@@ -140,22 +142,30 @@ func (t *Union) Description() string       { return t.Desc }
 func (t *Enum) Description() string        { return t.Desc }
 func (t *InputObject) Description() string { return t.Desc }
 
-type FieldResolve func(ctx context.Context, source interface{}, args map[string]interface{}) (interface{}, error)
+type TypeResolve func(ctx context.Context, value interface{}) (interface{}, error)
+
+type FieldResolve func(ctx context.Context, source, args interface{}) (interface{}, error)
+
+type HandlerFunc func(ctx context.Context) error
 
 type Field struct {
-	Type    Type
-	Args    map[string]*Argument
-	Resolve FieldResolve
-	Desc    string
+	Name          string
+	Type          Type
+	Args          map[string]*Argument
+	Resolve       FieldResolve
+	HandlersChain []HandlerFunc
+	Desc          string
 }
 
 type Argument struct {
+	Name         string
 	Type         Type
 	DefaultValue interface{}
 	Desc         string
 }
 
 type InputField struct {
+	Name         string
 	Type         Type
 	DefaultValue interface{}
 }
@@ -165,4 +175,27 @@ type Schema struct {
 	Query        Type
 	Mutation     Type
 	Subscription Type
+}
+
+func IsScalarType(typ Type) bool {
+	switch t := typ.(type) {
+	case *Scalar:
+		return true
+	case *List:
+		return IsScalarType(t.Type)
+	case *NonNull:
+		return IsScalarType(t.Type)
+	}
+	return false
+}
+
+func IsArgumentType(typ Type) bool {
+	switch t := typ.(type) {
+	case *Scalar, *InputObject, *Enum:
+		return true
+	case *List:
+		return IsArgumentType(t.Type)
+	case *NonNull:
+		return IsArgumentType(t.Type)
+	}
 }
