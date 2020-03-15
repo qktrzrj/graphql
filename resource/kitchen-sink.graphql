@@ -43,11 +43,11 @@ subscription StoryLikeSubscription(
 }
 
 fragment frag on Friend @onFragmentDefinition {
-  foo(size: $size, bar: $b, obj: {key: "value", block: `""
+  foo(size: $size, bar: $b, obj: {key: "value", block: `
 
       block string uses \"""
 
-  ""`})
+  `})
 }
 
 {
