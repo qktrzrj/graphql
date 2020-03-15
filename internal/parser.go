@@ -14,7 +14,10 @@ type Query struct {
 	*ast.SelectionSet
 }
 
-func ParseDocument(source string) (*ast.Document, *errors.GraphQLError) {
+func Parse(source string) (*ast.Document, *errors.GraphQLError) {
+	if source == "" {
+		return nil, errors.New("Must provide Source. Received: undefined.")
+	}
 	l := NewLexer(source, false)
 
 	var doc *ast.Document
@@ -53,7 +56,7 @@ func parseDocument(l *lexer) *ast.Document {
 			fragment.Loc = loc
 			doc.Definition = append(doc.Definition, fragment)
 		default:
-			l.SyntaxError(fmt.Sprintf(`unexpected %q, expecting "fragment"`, name.Name))
+			l.SyntaxError(fmt.Sprintf(`Unexpected %q.`, name.Name))
 		}
 	}
 	return doc
@@ -66,7 +69,7 @@ func parseDocument(l *lexer) *ast.Document {
  * TypeCondition : NamedType
  */
 func parseFragmentDefinition(l *lexer) *ast.FragmentDefinition {
-	name := parseName(l)
+	name := parseFragmentName(l)
 	l.advanceKeyWord("on")
 	typeCondition := parseNamed(l)
 	directives := parseDirectives(l)
@@ -77,6 +80,17 @@ func parseFragmentDefinition(l *lexer) *ast.FragmentDefinition {
 		Directives:    directives,
 		SelectionSet:  selectionSet,
 	}
+}
+
+// Name : but not `on`
+func parseFragmentName(l *lexer) *ast.Name {
+	loc := l.location()
+	name := l.scan.TokenText()
+	if name == "on" {
+		panic(syntaxError(`Unexpected Name "on".`))
+	}
+	l.advance(token.NAME)
+	return &ast.Name{Name: name, Loc: loc}
 }
 
 func parseOperationDefinition(l *lexer, opType ast.OperationType) *ast.OperationDefinition {
@@ -96,7 +110,11 @@ func parseOperationDefinition(l *lexer, opType ast.OperationType) *ast.Operation
 func parseVariableDefinitions(l *lexer) []*ast.VariableDefinition {
 	var vars []*ast.VariableDefinition
 	if l.peek() == token.PAREN_L {
-		vars = append(vars, parseVariableDefinition(l))
+		l.advance(token.PAREN_L)
+		for l.peek() != token.PAREN_R {
+			vars = append(vars, parseVariableDefinition(l))
+		}
+		l.advance(token.PAREN_R)
 	}
 	return vars
 }
@@ -114,11 +132,16 @@ func parseVariableDefinition(l *lexer) *ast.VariableDefinition {
 		l.advance(token.EQUALS)
 		defaultValue = parseValueLiteral(l, true)
 	}
+	var directives []*ast.Directive
+	if l.peek() == token.AT {
+		directives = parseDirectives(l)
+	}
 	return &ast.VariableDefinition{
 		Var:          variable,
 		Type:         t,
 		DefaultValue: defaultValue,
 		Loc:          loc,
+		Directives:   directives,
 	}
 }
 
@@ -240,24 +263,37 @@ func parseValueLiteral(l *lexer, constOnly bool) ast.Value {
 			return parseVariable(l)
 		}
 	case token.INT:
-		return &ast.IntValue{Value: l.scan.TokenText(), Loc: loc}
+		value := l.scan.TokenText()
+		l.advance(token.INT)
+		return &ast.IntValue{Value: value, Loc: loc}
 	case token.FLOAT:
-		return &ast.FloatValue{Value: l.scan.TokenText(), Loc: loc}
+		value := l.scan.TokenText()
+		l.advance(token.FLOAT)
+		return &ast.FloatValue{Value: value, Loc: loc}
 	case token.STRING:
-		return &ast.StringValue{Value: l.scan.TokenText(), Loc: loc}
+		value := l.scan.TokenText()
+		l.advance(token.STRING)
+		return &ast.StringValue{Value: value, Loc: loc}
+	case token.RAWSTRING:
+		value := l.scan.TokenText()
+		l.advance(token.RAWSTRING)
+		return &ast.StringValue{Value: value, Loc: loc}
 	case token.NAME:
 		tokenText := l.scan.TokenText()
+		l.advance(token.NAME)
 		if tokenText == "true" || tokenText == "false" {
 			value := false
 			if tokenText == "true" {
 				value = true
 			}
 			return &ast.BooleanValue{Value: value, Loc: loc}
-		} else if tokenText != "null" {
+		} else if tokenText == "null" {
+			return &ast.NullValue{Loc: loc}
+		} else {
 			return &ast.EnumValue{Value: tokenText, Loc: loc}
 		}
 	}
-	panic(syntaxError(fmt.Sprintf("Unexpected %q", scanner.TokenString(l.peek()))))
+	panic(syntaxError(fmt.Sprintf("Unexpected %q.", scanner.TokenString(l.peek()))))
 }
 
 /**
@@ -268,6 +304,7 @@ func parseValueLiteral(l *lexer, constOnly bool) ast.Value {
 func parseList(l *lexer, constOnly bool) *ast.ListValue {
 	loc := l.location()
 	var list []ast.Value
+	l.advance(token.BRACKET_L)
 	for l.peek() != token.BRACKET_R {
 		list = append(list, parseValueLiteral(l, constOnly))
 	}

@@ -30,12 +30,11 @@ func NewLexer(source string, useStringDescriptions ...bool) *lexer {
 	return &lexer{scan: scan}
 }
 
-func (l *lexer) catchSyntaxError(fn func()) *errors.GraphQLError {
-	var graphQLError *errors.GraphQLError
+func (l *lexer) catchSyntaxError(fn func()) (graphQLError *errors.GraphQLError) {
 	defer func() {
 		if err := recover(); err != nil {
 			if err, ok := err.(syntaxError); ok {
-				graphQLError = errors.New("syntax error: %s", err)
+				graphQLError = errors.New("Syntax Error: %s", err)
 				graphQLError.Locations = []errors.Location{l.location()}
 				return
 			}
@@ -43,7 +42,7 @@ func (l *lexer) catchSyntaxError(fn func()) *errors.GraphQLError {
 		}
 	}()
 	fn()
-	return graphQLError
+	return
 }
 
 func (l *lexer) peek() rune {
@@ -102,7 +101,7 @@ func (l *lexer) skipComment() {
 // Otherwise, do not change the parser state and return error.
 func (l *lexer) advance(expected rune) {
 	if l.next != expected {
-		l.SyntaxError(fmt.Sprintf("unexpected %q, expecting %s", l.scan.TokenText(), scanner.TokenString(expected)))
+		l.SyntaxError(fmt.Sprintf(`Expected %s, found %q.`, scanner.TokenString(expected), l.scan.TokenText()))
 	}
 	l.skipWhitespace()
 }
@@ -111,7 +110,7 @@ func (l *lexer) advance(expected rune) {
 // Otherwise, do not change the parser state and return error.
 func (l *lexer) advanceKeyWord(keyword string) {
 	if l.next != token.NAME || l.scan.TokenText() != keyword {
-		l.SyntaxError(fmt.Sprintf("unexpected %q, expecting %q", l.scan.TokenText(), keyword))
+		l.SyntaxError(fmt.Sprintf(`Expected "%s", found %q.`, keyword, l.scan.TokenText()))
 	}
 	l.skipWhitespace()
 }

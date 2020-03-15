@@ -198,4 +198,5 @@ func IsArgumentType(typ Type) bool {
 	case *NonNull:
 		return IsArgumentType(t.Type)
 	}
+	return false
 }

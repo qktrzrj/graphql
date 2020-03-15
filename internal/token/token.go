@@ -21,6 +21,7 @@ const (
 	INT       = scanner.Int
 	FLOAT     = scanner.Float
 	STRING    = scanner.String
+	RAWSTRING = scanner.RawString
 	AMP       = '&'
 )
 

@@ -20,7 +20,7 @@ var _ Value = (*IntValue)(nil)
 var _ Value = (*FloatValue)(nil)
 var _ Value = (*StringValue)(nil)
 
-//var _ Value = (*NullValue)(nil)
+var _ Value = (*NullValue)(nil)
 var _ Value = (*BooleanValue)(nil)
 var _ Value = (*EnumValue)(nil)
 var _ Value = (*ListValue)(nil)
@@ -76,6 +76,23 @@ func (f *FloatValue) Location() errors.Location {
 }
 
 func (f *FloatValue) GetValue() interface{} { return f.Value }
+
+// NullValue
+type NullValue struct {
+	Loc errors.Location
+}
+
+func (n *NullValue) Kind() string {
+	return "null"
+}
+
+func (n *NullValue) Location() errors.Location {
+	return n.Loc
+}
+
+func (n *NullValue) GetValue() interface{} {
+	return "null"
+}
 
 // The two keywords true and false represent the two boolean values.
 type BooleanValue struct {
