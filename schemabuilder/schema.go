@@ -428,7 +428,14 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
+	typeMap := make(map[string]internal.NamedType, len(sb.types))
+	for _, t := range sb.types {
+		if named, ok := t.(internal.NamedType); ok {
+			typeMap[named.TypeName()] = named
+		}
+	}
 	return &internal.Schema{
+		TypeMap:      typeMap,
 		Query:        queryTyp,
 		Mutation:     mutationTyp,
 		Subscription: subscriptionTyp,

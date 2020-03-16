@@ -172,6 +172,7 @@ type InputField struct {
 
 //Schema used to validate and resolve the queries
 type Schema struct {
+	TypeMap      map[string]NamedType
 	Query        Type `json:"query"`
 	Mutation     Type `json:"mutation"`
 	Subscription Type `json:"subscription"`
