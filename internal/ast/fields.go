@@ -52,15 +52,16 @@ import (
 //   }
 // }
 type Field struct {
-	Alias        *Name
-	Name         *Name
-	Arguments    []*Argument
-	Directives   []*Directive
-	SelectionSet *SelectionSet
-	Loc          errors.Location
+	Kind         string          `json:"kind"`
+	Alias        *Name           `json:"alias"`
+	Name         *Name           `json:"name"`
+	Arguments    []*Argument     `json:"arguments"`
+	Directives   []*Directive    `json:"directives"`
+	SelectionSet *SelectionSet   `json:"selectionSet"`
+	Loc          errors.Location `json:"loc"`
 }
 
-func (f *Field) Kind() string {
+func (f *Field) GetKind() string {
 	return kinds.Field
 }
 

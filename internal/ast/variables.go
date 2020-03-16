@@ -33,11 +33,12 @@ import (
 // If a variable is referenced in a fragment and is included by an operation that does not define that variable,
 // the operation cannot be executed.
 type Variable struct {
-	Name *Name
-	Loc  errors.Location
+	Kind string          `json:"kind"`
+	Name *Name           `json:"name"`
+	Loc  errors.Location `json:"loc"`
 }
 
-func (v *Variable) Kind() string {
+func (v *Variable) GetKind() string {
 	return kinds.Variable
 }
 
@@ -48,14 +49,15 @@ func (v *Variable) Location() errors.Location {
 func (v *Variable) GetValue() interface{} { return v.Name }
 
 type VariableDefinition struct {
-	Var          *Variable
-	Type         Type
-	DefaultValue Value
-	Directives   []*Directive
-	Loc          errors.Location
+	Kind         string          `json:"kind"`
+	Var          *Variable       `json:"variable"`
+	Type         Type            `json:"type"`
+	DefaultValue Value           `json:"defaultValue"`
+	Directives   []*Directive    `json:"directives"`
+	Loc          errors.Location `json:"loc"`
 }
 
-func (v *VariableDefinition) Kind() string {
+func (v *VariableDefinition) GetKind() string {
 	return kinds.VariableDefinition
 }
 

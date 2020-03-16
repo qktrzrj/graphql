@@ -39,15 +39,16 @@ const (
 //   field
 // }
 type OperationDefinition struct {
-	Type         OperationType
-	Name         *Name
-	Vars         []*VariableDefinition
-	Directives   []*Directive
-	SelectionSet *SelectionSet
-	Loc          errors.Location
+	Kind         string                `json:"kind"`
+	Operation    OperationType         `json:"Operation"`
+	Name         *Name                 `json:"name"`
+	Vars         []*VariableDefinition `json:"variables"`
+	Directives   []*Directive          `json:"directives"`
+	SelectionSet *SelectionSet         `json:"selectionSet"`
+	Loc          errors.Location       `json:"loc"`
 }
 
-func (o *OperationDefinition) Kind() string {
+func (o *OperationDefinition) GetKind() string {
 	return kinds.OperationDefinition
 }
 

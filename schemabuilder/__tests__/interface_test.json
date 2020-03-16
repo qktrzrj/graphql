@@ -1,0 +1,52 @@
+{
+  "query": {
+    "name": "Query",
+    "description": "",
+    "interfaces": {},
+    "fields": {
+      "SomeObject": {
+        "name": "SomeObject",
+        "type": {
+          "Type": {
+            "name": "SomeObject",
+            "description": "",
+            "interfaces": {
+              "Interface": {
+                "name": "Interface",
+                "description": "",
+                "fields": {}
+              }
+            },
+            "fields": {}
+          }
+        },
+        "arguments": {},
+        "desc": ""
+      }
+    }
+  },
+  "mutation": {
+    "name": "Mutation",
+    "description": "",
+    "interfaces": {},
+    "fields": {}
+  },
+  "subscription": {
+    "name": "Subscription",
+    "description": "",
+    "interfaces": {},
+    "fields": {
+      "Payload": {
+        "name": "Payload",
+        "type": {
+          "Type": {
+            "name": "Bytes",
+            "description": "byte slice type"
+          }
+        },
+        "arguments": {},
+        "desc": ""
+      }
+    }
+  }
+}

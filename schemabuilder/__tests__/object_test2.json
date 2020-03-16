@@ -1,0 +1,67 @@
+{
+  "query": {
+    "name": "Query",
+    "description": "",
+    "interfaces": {},
+    "fields": {
+      "foo": {
+        "name": "foo",
+        "type": {
+          "Type": {
+            "name": "foo",
+            "description": "",
+            "interfaces": {},
+            "fields": {
+              "bar": {
+                "name": "bar",
+                "type": {
+                  "Type": {
+                    "name": "Scalar",
+                    "description": ""
+                  }
+                },
+                "arguments": {},
+                "desc": "A terrible reason"
+              },
+              "baz": {
+                "name": "baz",
+                "type": {
+                  "name": "Scalar",
+                  "description": ""
+                },
+                "arguments": {},
+                "desc": ""
+              }
+            }
+          }
+        },
+        "arguments": {},
+        "desc": ""
+      }
+    }
+  },
+  "mutation": {
+    "name": "Mutation",
+    "description": "",
+    "interfaces": {},
+    "fields": {}
+  },
+  "subscription": {
+    "name": "Subscription",
+    "description": "",
+    "interfaces": {},
+    "fields": {
+      "Payload": {
+        "name": "Payload",
+        "type": {
+          "Type": {
+            "name": "Bytes",
+            "description": "byte slice type"
+          }
+        },
+        "arguments": {},
+        "desc": ""
+      }
+    }
+  }
+}

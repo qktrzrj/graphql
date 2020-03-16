@@ -15,11 +15,12 @@ import (
 // }
 // In this query, the id, firstName, and lastName fields form a selection set. Selection sets may also contain fragment references.
 type SelectionSet struct {
-	Selections []Selection
-	Loc        errors.Location
+	Kind       string          `json:"kind"`
+	Selections []Selection     `json:"selections"`
+	Loc        errors.Location `json:"loc"`
 }
 
-func (s *SelectionSet) Kind() string {
+func (s *SelectionSet) GetKind() string {
 	return kinds.SelectionSet
 }
 

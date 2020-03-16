@@ -6,11 +6,12 @@ import (
 )
 
 type Name struct {
-	Name string
-	Loc  errors.Location
+	Kind string          `json:"kind"`
+	Name string          `json:"value"`
+	Loc  errors.Location `json:"loc"`
 }
 
-func (n *Name) Kind() string {
+func (n *Name) GetKind() string {
 	return kinds.Name
 }
 

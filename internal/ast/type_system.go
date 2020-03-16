@@ -5,7 +5,7 @@ import (
 	"github.com/unrotten/graphql/internal/kinds"
 )
 
-// The GraphQL Type system describes the capabilities of a GraphQL server and is used to determine if a query is valid.
+// The GraphQL Operation system describes the capabilities of a GraphQL server and is used to determine if a query is valid.
 // The type system also describes the input types of query variables to determine if values provided at runtime are valid.
 //
 // The GraphQL language includes an IDL used to describe a GraphQL service’s type system.
@@ -25,7 +25,7 @@ var _ TypeSystemDefinition = (*SchemaDefinition)(nil)
 var _ TypeSystemDefinition = (TypeDefinition)(nil)
 var _ TypeSystemDefinition = (*DirectiveDefinition)(nil)
 
-// Type system extensions are used to represent a GraphQL type system which has been extended from some original type system.
+// Operation system extensions are used to represent a GraphQL type system which has been extended from some original type system.
 // For example, this might be used by a local service to represent data a GraphQL client only accesses locally,
 // or by a GraphQL service which is itself an extension of another GraphQL service.
 type TypeSystemExtension interface {
@@ -108,17 +108,18 @@ type Description interface {
 // All types and directives defined within a schema must not have a name which begins with "__" (two underscores),
 // as this is used exclusively by GraphQL’s introspection system.
 type SchemaDefinition struct {
-	Desc           *StringValue
-	Directives     []*Directive
-	OperationTypes []*OperationTypeDefinition
-	Loc            errors.Location
+	Kind           string                     `json:"kind"`
+	Desc           *StringValue               `json:"desc"`
+	Directives     []*Directive               `json:"directives"`
+	OperationTypes []*OperationTypeDefinition `json:"operationTypes"`
+	Loc            errors.Location            `json:"loc"`
 }
 
 func (s *SchemaDefinition) IsDefinition() {}
 
 func (s *SchemaDefinition) IsTypeSystemDefinition() {}
 
-func (s *SchemaDefinition) Kind() string {
+func (s *SchemaDefinition) GetKind() string {
 	return kinds.SchemaDefinition
 }
 
@@ -172,7 +173,7 @@ func (s *SchemaDefinition) Location() errors.Location {
 // type MyMutationRootType {
 //   setSomeField(to: String): String
 // }
-// Default Root Operation Type Names
+// Default Root Operation Operation Names
 // While any type can be the root operation type for a GraphQL operation,
 // the type system definition language can omit the schema definition when the query, mutation,
 // and subscription root types are named Query, Mutation, and Subscription respectively.
@@ -187,12 +188,13 @@ func (s *SchemaDefinition) Location() errors.Location {
 //   someField: String
 // }
 type OperationTypeDefinition struct {
-	Operation OperationType
-	Type      *Named
-	Loc       errors.Location
+	Kind      string          `json:"kind"`
+	Operation OperationType   `json:"operation"`
+	Type      *Named          `json:"type"`
+	Loc       errors.Location `json:"loc"`
 }
 
-func (o *OperationTypeDefinition) Kind() string {
+func (o *OperationTypeDefinition) GetKind() string {
 	return kinds.OperationTypeDefinition
 }
 
@@ -215,7 +217,7 @@ type SchemaExtension struct {
 	Loc           errors.Location
 }
 
-func (s *SchemaExtension) Kind() string {
+func (s *SchemaExtension) GetKind() string {
 	return ""
 }
 
@@ -350,7 +352,7 @@ func IsUnionType(p Node) bool {
 	return ok
 }
 
-// Type extensions are used to represent a GraphQL type which has been extended from some original type.
+// Operation extensions are used to represent a GraphQL type which has been extended from some original type.
 // For example, this might be used by a local service to represent additional fields a GraphQL client only accesses locally.
 type TypeExtension interface {
 	TypeSystemExtension
@@ -381,10 +383,11 @@ var _ TypeExtension = (*InputObjectExtension)(nil)
 // scalar Time
 // scalar Url
 type ScalarDefinition struct {
-	Desc       *StringValue
-	Name       *Name
-	Directives []*Directive
-	Loc        errors.Location
+	Kind       string          `json:"kind"`
+	Desc       *StringValue    `json:"desc"`
+	Name       *Name           `json:"name"`
+	Directives []*Directive    `json:"directives"`
+	Loc        errors.Location `json:"loc"`
 }
 
 func (s *ScalarDefinition) IsDefinition() {}
@@ -393,7 +396,7 @@ func (s *ScalarDefinition) IsTypeSystemDefinition() {}
 
 func (s *ScalarDefinition) IsTypeDefinition() {}
 
-func (s *ScalarDefinition) Kind() string {
+func (s *ScalarDefinition) GetKind() string {
 	return kinds.ScalarDefinition
 }
 
@@ -404,7 +407,7 @@ func (s *ScalarDefinition) Location() errors.Location {
 // Scalar type extensions are used to represent a scalar type which has been extended from some original scalar type.
 // For example, this might be used by a GraphQL tool or service which adds directives to an existing scalar.
 //
-// Type Validation
+// Operation Validation
 // Scalar type extensions have the potential to be invalid if incorrectly defined.
 //
 // 1.The named type must already be defined and must be a Scalar type.
@@ -415,7 +418,7 @@ type ScalarExtension struct {
 	Loc        errors.Location
 }
 
-func (s *ScalarExtension) Kind() string {
+func (s *ScalarExtension) GetKind() string {
 	return ""
 }
 
@@ -515,12 +518,13 @@ func (s *ScalarExtension) IsTypeExtension() {}
 //   }
 // }
 type ObjectDefinition struct {
-	Desc       *StringValue
-	Name       *Name
-	Interfaces []*Named
-	Directives []*Directive
-	Fields     []*FieldDefinition
-	Loc        errors.Location
+	Kind       string             `json:"kind"`
+	Desc       *StringValue       `json:"desc"`
+	Name       *Name              `json:"name"`
+	Interfaces []*Named           `json:"interfaces"`
+	Directives []*Directive       `json:"directives"`
+	Fields     []*FieldDefinition `json:"fields"`
+	Loc        errors.Location    `json:"loc"`
 }
 
 func (o *ObjectDefinition) IsDefinition() {}
@@ -529,7 +533,7 @@ func (o *ObjectDefinition) IsTypeSystemDefinition() {}
 
 func (o *ObjectDefinition) IsTypeDefinition() {}
 
-func (o *ObjectDefinition) Kind() string {
+func (o *ObjectDefinition) GetKind() string {
 	return kinds.ObjectDefinition
 }
 
@@ -538,15 +542,16 @@ func (o *ObjectDefinition) Location() errors.Location {
 }
 
 type FieldDefinition struct {
-	Desc       *StringValue
-	Name       *Name
-	Argument   []*InputValueDefinition
-	Type       Type
-	Directives []*Directive
-	Loc        errors.Location
+	Kind       string                  `json:"kind"`
+	Desc       *StringValue            `json:"desc"`
+	Name       *Name                   `json:"name"`
+	Argument   []*InputValueDefinition `json:"argument"`
+	Type       Type                    `json:"type"`
+	Directives []*Directive            `json:"directives"`
+	Loc        errors.Location         `json:"loc"`
 }
 
-func (f *FieldDefinition) Kind() string {
+func (f *FieldDefinition) GetKind() string {
 	return kinds.FieldDefinition
 }
 
@@ -583,15 +588,16 @@ func (f *FieldDefinition) Location() errors.Location {
 // }
 // The type of an object field argument must be an input type (any type except an Object, Interface, or Union type).
 type InputValueDefinition struct {
-	Desc         *StringValue
-	Name         *Name
-	Type         Type
-	DefaultValue Value
-	Directives   []*Directive
-	Loc          errors.Location
+	Kind         string          `json:"kind"`
+	Desc         *StringValue    `json:"desc"`
+	Name         *Name           `json:"name"`
+	Type         Type            `json:"type"`
+	DefaultValue Value           `json:"defaultValue"`
+	Directives   []*Directive    `json:"directives"`
+	Loc          errors.Location `json:"loc"`
 }
 
-func (i *InputValueDefinition) Kind() string {
+func (i *InputValueDefinition) GetKind() string {
 	return kinds.InputValueDefinition
 }
 
@@ -621,7 +627,7 @@ type ObjectExtension struct {
 	Loc        errors.Location
 }
 
-func (o *ObjectExtension) Kind() string {
+func (o *ObjectExtension) GetKind() string {
 	return ""
 }
 
@@ -667,12 +673,13 @@ func (o *ObjectExtension) IsTypeExtension() {}
 //   employeeCount: Int
 // }
 type InterfaceDefinition struct {
-	Desc       *StringValue
-	Name       *Name
-	Interfaces []*Named
-	Directives []*Directive
-	Fields     []*FieldDefinition
-	Loc        errors.Location
+	Kind       string             `json:"kind"`
+	Desc       *StringValue       `json:"desc"`
+	Name       *Name              `json:"name"`
+	Interfaces []*Named           `json:"interfaces"`
+	Directives []*Directive       `json:"directives"`
+	Fields     []*FieldDefinition `json:"fields"`
+	Loc        errors.Location    `json:"loc"`
 }
 
 func (i *InterfaceDefinition) IsDefinition() {}
@@ -681,7 +688,7 @@ func (i *InterfaceDefinition) IsTypeSystemDefinition() {}
 
 func (i *InterfaceDefinition) IsTypeDefinition() {}
 
-func (i *InterfaceDefinition) Kind() string {
+func (i *InterfaceDefinition) GetKind() string {
 	return kinds.InterfaceDefinition
 }
 
@@ -719,7 +726,7 @@ type InterfaceExtension struct {
 	Loc        errors.Location
 }
 
-func (i *InterfaceExtension) Kind() string {
+func (i *InterfaceExtension) GetKind() string {
 	return ""
 }
 
@@ -790,11 +797,12 @@ func (i *InterfaceExtension) IsTypeExtension() {}
 //   | Photo
 //   | Person
 type UnionDefinition struct {
-	Desc       *StringValue
-	Name       *Name
-	Directives []*Directive
-	Members    []*Named
-	Loc        errors.Location
+	Kind       string          `json:"kind"`
+	Desc       *StringValue    `json:"desc"`
+	Name       *Name           `json:"name"`
+	Directives []*Directive    `json:"directives"`
+	Members    []*Named        `json:"members"`
+	Loc        errors.Location `json:"loc"`
 }
 
 func (u *UnionDefinition) IsDefinition() {}
@@ -803,7 +811,7 @@ func (u *UnionDefinition) IsTypeSystemDefinition() {}
 
 func (u *UnionDefinition) IsTypeDefinition() {}
 
-func (u *UnionDefinition) Kind() string {
+func (u *UnionDefinition) GetKind() string {
 	return kinds.UnionDefinition
 }
 
@@ -821,7 +829,7 @@ type UnionExtension struct {
 	Loc        errors.Location
 }
 
-func (u *UnionExtension) Kind() string {
+func (u *UnionExtension) GetKind() string {
 	return ""
 }
 
@@ -850,11 +858,12 @@ func (u *UnionExtension) IsTypeExtension() {}
 //   WEST
 // }
 type EnumDefinition struct {
-	Desc       *StringValue
-	Name       *Name
-	Directives []*Directive
-	Values     []*EnumValueDefinition
-	Loc        errors.Location
+	Kind       string                 `json:"kind"`
+	Desc       *StringValue           `json:"desc"`
+	Name       *Name                  `json:"name"`
+	Directives []*Directive           `json:"directives"`
+	Values     []*EnumValueDefinition `json:"values"`
+	Loc        errors.Location        `json:"loc"`
 }
 
 func (e *EnumDefinition) IsDefinition() {}
@@ -863,7 +872,7 @@ func (e *EnumDefinition) IsTypeSystemDefinition() {}
 
 func (e *EnumDefinition) IsTypeDefinition() {}
 
-func (e *EnumDefinition) Kind() string {
+func (e *EnumDefinition) GetKind() string {
 	return kinds.EnumDefinition
 }
 
@@ -872,13 +881,14 @@ func (e *EnumDefinition) Location() errors.Location {
 }
 
 type EnumValueDefinition struct {
-	Desc       *StringValue
-	Value      *EnumValue
-	Directives []*Directive
-	Loc        errors.Location
+	Kind       string          `json:"kind"`
+	Desc       *StringValue    `json:"desc"`
+	Value      *EnumValue      `json:"value"`
+	Directives []*Directive    `json:"directives"`
+	Loc        errors.Location `json:"loc"`
 }
 
-func (e *EnumValueDefinition) Kind() string {
+func (e *EnumValueDefinition) GetKind() string {
 	return kinds.EnumValueDefinition
 }
 
@@ -896,7 +906,7 @@ type EnumExtension struct {
 	Loc        errors.Location
 }
 
-func (e *EnumExtension) Kind() string {
+func (e *EnumExtension) GetKind() string {
 	return ""
 }
 
@@ -923,11 +933,12 @@ func (e *EnumExtension) IsTypeExtension() {}
 //   y: Float
 // }
 type InputObjectDefinition struct {
-	Desc        *StringValue
-	Name        *Name
-	Directives  []*Directive
-	InputFields []*InputValueDefinition
-	Loc         errors.Location
+	Kind        string                  `json:"kind"`
+	Desc        *StringValue            `json:"desc"`
+	Name        *Name                   `json:"name"`
+	Directives  []*Directive            `json:"directives"`
+	InputFields []*InputValueDefinition `json:"inputFields"`
+	Loc         errors.Location         `json:"loc"`
 }
 
 func (i *InputObjectDefinition) IsDefinition() {}
@@ -936,7 +947,7 @@ func (i *InputObjectDefinition) IsTypeSystemDefinition() {}
 
 func (i *InputObjectDefinition) IsTypeDefinition() {}
 
-func (i *InputObjectDefinition) Kind() string {
+func (i *InputObjectDefinition) GetKind() string {
 	return kinds.InputObjectDefinition
 }
 
@@ -954,7 +965,7 @@ type InputObjectExtension struct {
 	Loc         errors.Location
 }
 
-func (i *InputObjectExtension) Kind() string {
+func (i *InputObjectExtension) GetKind() string {
 	return ""
 }
 
@@ -977,18 +988,19 @@ func (i *InputObjectExtension) IsTypeExtension() {}
 // GraphQL implementations that support the type system definition language must provide
 // the @deprecated directive if representing deprecated portions of the schema.
 type DirectiveDefinition struct {
-	Desc      *StringValue
-	Name      *Name
-	Arguments []*InputValueDefinition
-	Locations []string
-	Loc       errors.Location
+	Kind      string                  `json:"kind"`
+	Desc      *StringValue            `json:"desc"`
+	Name      *Name                   `json:"name"`
+	Arguments []*InputValueDefinition `json:"arguments"`
+	Locations []string                `json:"locations"`
+	Loc       errors.Location         `json:"loc"`
 }
 
 func (d *DirectiveDefinition) IsDefinition() {}
 
 func (d *DirectiveDefinition) IsTypeSystemDefinition() {}
 
-func (d *DirectiveDefinition) Kind() string {
+func (d *DirectiveDefinition) GetKind() string {
 	return kinds.DirectiveDefinition
 }
 

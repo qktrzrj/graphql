@@ -39,12 +39,13 @@ import (
 //   picture(height: 100, width: 200)
 // }
 type Argument struct {
-	Name  *Name
-	Value Value
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Name  *Name           `json:"name"`
+	Value Value           `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (a *Argument) Kind() string {
+func (a *Argument) GetKind() string {
 	return kinds.Argument
 }
 

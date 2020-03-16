@@ -101,7 +101,9 @@ func (l *lexer) skipComment() {
 // Otherwise, do not change the parser state and return error.
 func (l *lexer) advance(expected rune) {
 	if l.next != expected {
-		l.SyntaxError(fmt.Sprintf(`Expected %s, found %q.`, scanner.TokenString(expected), l.scan.TokenText()))
+		found := strings.TrimPrefix(l.scan.TokenText(), `"`)
+		found = strings.TrimSuffix(found, `"`)
+		l.SyntaxError(fmt.Sprintf(`Expected %s, found %q.`, scanner.TokenString(expected), found))
 	}
 	l.skipWhitespace()
 }
@@ -110,7 +112,9 @@ func (l *lexer) advance(expected rune) {
 // Otherwise, do not change the parser state and return error.
 func (l *lexer) advanceKeyWord(keyword string) {
 	if l.next != token.NAME || l.scan.TokenText() != keyword {
-		l.SyntaxError(fmt.Sprintf(`Expected "%s", found %q.`, keyword, l.scan.TokenText()))
+		found := strings.TrimPrefix(l.scan.TokenText(), `"`)
+		found = strings.TrimSuffix(found, `"`)
+		l.SyntaxError(fmt.Sprintf(`Expected "%s", found %q.`, keyword, found))
 	}
 	l.skipWhitespace()
 }

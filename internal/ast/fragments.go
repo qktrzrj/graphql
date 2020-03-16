@@ -74,12 +74,13 @@ import (
 // }
 // The queries noFragments, withFragments, and withNestedFragments all produce the same response object.
 type FragmentSpread struct {
-	Name       *Name
-	Directives []*Directive
-	Loc        errors.Location
+	Kind       string          `json:"kind"`
+	Name       *Name           `json:"name"`
+	Directives []*Directive    `json:"directives"`
+	Loc        errors.Location `json:"loc"`
 }
 
-func (f *FragmentSpread) Kind() string {
+func (f *FragmentSpread) GetKind() string {
 	return kinds.FragmentSpread
 }
 
@@ -90,15 +91,16 @@ func (f *FragmentSpread) Location() errors.Location {
 func (f *FragmentSpread) IsSelection() {}
 
 type FragmentDefinition struct {
-	Name                *Name
-	VariableDefinitions []*VariableDefinition
-	TypeCondition       *Named
-	Directives          []*Directive
-	SelectionSet        *SelectionSet
-	Loc                 errors.Location
+	Kind                string                `json:"kind"`
+	Name                *Name                 `json:"name"`
+	VariableDefinitions []*VariableDefinition `json:"variableDefinitions"`
+	TypeCondition       *Named                `json:"typeCondition"`
+	Directives          []*Directive          `json:"directives"`
+	SelectionSet        *SelectionSet         `json:"selectionSet"`
+	Loc                 errors.Location       `json:"loc"`
 }
 
-func (f *FragmentDefinition) Kind() string {
+func (f *FragmentDefinition) GetKind() string {
 	return kinds.FragmentDefinition
 }
 
@@ -143,13 +145,14 @@ func (f *FragmentDefinition) IsDefinition() {}
 //   }
 // }
 type InlineFragment struct {
-	TypeCondition *Named
-	Directives    []*Directive
-	SelectionSet  *SelectionSet
-	Loc           errors.Location
+	Kind          string          `json:"kind"`
+	TypeCondition *Named          `json:"typeCondition"`
+	Directives    []*Directive    `json:"directives"`
+	SelectionSet  *SelectionSet   `json:"selectionSet"`
+	Loc           errors.Location `json:"loc"`
 }
 
-func (i *InlineFragment) Kind() string {
+func (i *InlineFragment) GetKind() string {
 	return kinds.InlineFragment
 }
 

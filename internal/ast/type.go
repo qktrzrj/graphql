@@ -18,11 +18,12 @@ var _ Type = (*List)(nil)
 var _ Type = (*NonNull)(nil)
 
 type Named struct {
-	Name *Name
-	Loc  errors.Location
+	Kind string          `json:"kind"`
+	Name *Name           `json:"name"`
+	Loc  errors.Location `json:"loc"`
 }
 
-func (n *Named) Kind() string {
+func (n *Named) GetKind() string {
 	return kinds.Named
 }
 
@@ -35,15 +36,16 @@ func (n *Named) String() string {
 }
 
 type List struct {
-	Type Type
-	Loc  errors.Location
+	Kind string          `json:"kind"`
+	Type Type            `json:"type"`
+	Loc  errors.Location `json:"loc"`
 }
 
 func (l *List) OfType() Type {
 	return l.Type
 }
 
-func (l *List) Kind() string {
+func (l *List) GetKind() string {
 	return kinds.List
 }
 
@@ -56,15 +58,16 @@ func (l *List) String() string {
 }
 
 type NonNull struct {
-	Type Type
-	Loc  errors.Location
+	Kind string          `json:"kind"`
+	Type Type            `json:"type"`
+	Loc  errors.Location `json:"loc"`
 }
 
 func (n *NonNull) OfType() Type {
 	return n.Type
 }
 
-func (n *NonNull) Kind() string {
+func (n *NonNull) GetKind() string {
 	return kinds.NonNull
 }
 

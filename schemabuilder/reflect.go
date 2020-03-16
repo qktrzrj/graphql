@@ -26,6 +26,9 @@ func getField(source interface{}, name string) reflect.Type {
 
 func getMethod(source interface{}, name string) reflect.Type {
 	typ := reflect.TypeOf(source)
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
 	if field, ok := typ.MethodByName(name); ok {
 		return field.Type
 	}

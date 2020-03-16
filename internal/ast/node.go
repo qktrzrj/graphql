@@ -3,7 +3,7 @@ package ast
 import "github.com/unrotten/graphql/errors"
 
 type Node interface {
-	Kind() string
+	GetKind() string
 	Location() errors.Location
 }
 
@@ -22,6 +22,7 @@ var _ Node = (*IntValue)(nil)
 var _ Node = (*FloatValue)(nil)
 var _ Node = (*StringValue)(nil)
 var _ Node = (*BooleanValue)(nil)
+var _ Node = (*NullValue)(nil)
 var _ Node = (*EnumValue)(nil)
 var _ Node = (*ListValue)(nil)
 var _ Node = (*ObjectValue)(nil)

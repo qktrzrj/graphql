@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
+	"time"
 )
 
 // A Object represents a Go type and set of methods to be converted into an
@@ -77,7 +79,7 @@ type Scalar struct {
 
 // FieldFunc exposes a field on an object. The function f can take a number of
 // optional arguments:
-// func([ctx graphql.context], [o *Type], [args struct {}]) ([Result], [error])
+// func([ctx graphql.context], [o *Operation], [args struct {}]) ([Result], [error])
 //
 // For example, for an object of type User, a fullName field might take just an
 // instance of the object:
@@ -94,9 +96,6 @@ type Scalar struct {
 //        return userID, err
 //    })
 func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOption ...FieldFuncOption) {
-	if getField(s.Type, name) == nil {
-		panic("Object FieldFunc param name must be the name or tag of struct field")
-	}
 	if s.FieldResolve == nil {
 		s.FieldResolve = make(map[string]*fieldResolve)
 	}
@@ -129,7 +128,16 @@ func (io *InputObject) FieldFunc(name string, defaultValue interface{}) {
 
 // InterfaceFunc exposes a interface on an object.
 func (s *Object) InterfaceFunc(list ...*Interface) {
-	s.Interface = append(s.Interface, list...)
+	for _, i := range list {
+		interfaceTyp := reflect.TypeOf(i.Type)
+		if interfaceTyp.Kind() == reflect.Ptr {
+			interfaceTyp = interfaceTyp.Elem()
+		}
+		if typ := reflect.TypeOf(s.Type); !typ.Implements(interfaceTyp) && !reflect.PtrTo(typ).Implements(interfaceTyp) {
+			panic(fmt.Sprintf("object %s must implements interface %s", s.Name, i.Name))
+		}
+		s.Interface = append(s.Interface, i)
+	}
 }
 
 // similar as object's func, but haven't middleware func , and given name must be same as interface's method
@@ -143,10 +151,6 @@ func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
 
 	if _, ok := s.FieldResolve[name]; ok {
 		panic("duplicate method")
-	}
-	typ := reflect.TypeOf(s.Type)
-	if _, ok := typ.MethodByName(name); !ok {
-		panic("interfaces func's name must be same as method")
 	}
 
 	resolve := &fieldResolve{Fn: fn, Desc: desc}
@@ -442,5 +446,62 @@ var ID = &Scalar{
 			return Id{Value: int(val)}, nil
 		}
 		return nil, errors.New("not a ID")
+	},
+}
+
+type MMap struct {
+	Value interface{}
+}
+
+var Map = &Scalar{
+	Name: "Map",
+	Desc: `map type, use as {"a":value}`,
+	Type: MMap{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		mmap := value.(*MMap)
+		marshal, err := json.Marshal(mmap.Value)
+		if err != nil {
+			return nil, err
+		}
+		return string(marshal), nil
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		vstr := value.(string)
+		mmap := &MMap{}
+		err := json.Unmarshal([]byte(vstr), &mmap.Value)
+		if err != nil {
+			return nil, err
+		}
+		return mmap, nil
+	},
+}
+
+var Time = &Scalar{
+	Name:      "Time",
+	Desc:      "time type",
+	Type:      time.Time{},
+	Serialize: Serialize,
+	ParseValue: func(value interface{}) (interface{}, error) {
+		vstr := value.(string)
+		time := time.Time{}
+		err := json.Unmarshal([]byte(vstr), &time)
+		if err != nil {
+			return nil, err
+		}
+		return time, nil
+	},
+}
+
+var Bytes = &Scalar{
+	Name: "Bytes",
+	Desc: "byte slice type",
+	Type: []byte{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		vby := value.([]byte)
+		return string(vby), nil
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		vstr := value.(string)
+		return []byte(vstr), nil
 	},
 }

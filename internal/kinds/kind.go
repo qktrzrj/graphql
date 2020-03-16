@@ -27,6 +27,7 @@ const (
 	ListValue    = "ListValue"
 	ObjectValue  = "ObjectValue"
 	ObjectField  = "ObjectField"
+	NullValue    = "NullValue"
 
 	// Directives
 	Directive = "Directive"
@@ -36,7 +37,7 @@ const (
 	List    = "List"    // previously ListType
 	NonNull = "NonNull" // previously NonNull
 
-	// Type System Definitions
+	// Operation System Definitions
 	SchemaDefinition        = "SchemaDefinition"
 	OperationTypeDefinition = "OperationTypeDefinition"
 

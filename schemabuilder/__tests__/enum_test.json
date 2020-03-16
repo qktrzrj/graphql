@@ -1,0 +1,62 @@
+{
+  "query": {
+    "name": "Query",
+    "description": "",
+    "interfaces": {},
+    "fields": {
+      "SomeObject": {
+        "name": "SomeObject",
+        "type": {
+          "Type": {
+            "name": "SomeObject",
+            "description": "",
+            "interfaces": {},
+            "fields": {
+              "enum": {
+                "name": "enum",
+                "type": {
+                  "Type": {
+                    "name": "EnumWithDeprecatedValue",
+                    "values": [
+                      "foo",
+                      "bar"
+                    ],
+                    "description": ""
+                  }
+                },
+                "arguments": {},
+                "desc": ""
+              }
+            }
+          }
+        },
+        "arguments": {},
+        "desc": ""
+      }
+    }
+  },
+  "mutation": {
+    "name": "Mutation",
+    "description": "",
+    "interfaces": {},
+    "fields": {}
+  },
+  "subscription": {
+    "name": "Subscription",
+    "description": "",
+    "interfaces": {},
+    "fields": {
+      "Payload": {
+        "name": "Payload",
+        "type": {
+          "Type": {
+            "name": "Bytes",
+            "description": "byte slice type"
+          }
+        },
+        "arguments": {},
+        "desc": ""
+      }
+    }
+  }
+}

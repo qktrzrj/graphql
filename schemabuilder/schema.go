@@ -32,6 +32,19 @@ func NewSchema() *Schema {
 	return schema
 }
 
+type DescField struct {
+	Field interface{}
+	Desc  string
+}
+
+type DefaultValueField struct {
+	Field        interface{}
+	DefaultValue interface{}
+}
+
+var DescFieldTyp = reflect.TypeOf(DescField{})
+var DefaultValueTyp = reflect.TypeOf(DefaultValueField{})
+
 // Enum registers an enumType in the schema. The val should be any arbitrary value
 // of the enumType to be used for reflection, and the enumMap should be
 // the corresponding map of the enums.
@@ -63,24 +76,18 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 	dMap := make(map[string]string)
 	for key, valInterface := range enumMap {
 		desc := ""
-		val := reflect.ValueOf(valInterface)
+		val := reflect.TypeOf(valInterface)
 		if val.Kind() != typ.Kind() {
-			if val.Kind() == reflect.Struct {
-				if val.NumField() != 2 {
-					panic("if enumMap's value is struct,then fieldNum must be 2.")
+			if val == DescFieldTyp {
+				value := reflect.ValueOf(valInterface)
+				desc = value.FieldByName("Desc").String()
+				valInterface = value.FieldByName("Field").Interface()
+				if reflect.TypeOf(valInterface).Kind() != typ.Kind() {
+					panic("enum descField's field types are not equal")
 				}
-				field := val.Field(0)
-				fieldDesc := val.Field(1)
-				if field.Kind() != typ.Kind() {
-					panic("enumMap's value types are not equal")
-				}
-				if fieldDesc.Kind() != reflect.String {
-					panic("enum value's desc must be string")
-				}
-				desc = fieldDesc.String()
-				valInterface = field.Interface()
+			} else {
+				panic("enum types are not equal")
 			}
-			panic("enum types are not equal")
 		}
 		eMap[key] = valInterface
 		rMap[valInterface] = key
@@ -101,10 +108,14 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 // we'll return an Object struct that we can use to register custom
 // relationships and fields on the object.
 func (s *Schema) Object(name string, typ interface{}, desc string, options ...FieldFuncOption) *Object {
+	objTyp := reflect.TypeOf(typ)
+	if name == "" {
+		name = objTyp.Name()
+	}
 	if object, ok := s.objects[name]; ok {
-		if reflect.TypeOf(object) != reflect.TypeOf(typ) {
+		if reflect.TypeOf(object.Type) != objTyp {
 			var t = reflect.TypeOf(object.Type)
-			panic(fmt.Sprintf("re-registered input object with different type, already registered type:"+
+			panic(fmt.Sprintf("re-registered object with different type, already registered type:"+
 				" %s.%s", t.PkgPath(), t.Name()))
 		}
 		return object
@@ -126,7 +137,7 @@ func (s *Schema) Object(name string, typ interface{}, desc string, options ...Fi
 
 // InputObject registers a struct as inout object which can be passed as an argument to a query or mutation
 // We'll read through the fields of the struct and create argument parsers to fill the data from graphQL JSON input
-func (s *Schema) InputObject(name string, typ interface{}) *InputObject {
+func (s *Schema) InputObject(name string, typ interface{}, desc string) *InputObject {
 	if inputObject, ok := s.inputObjects[name]; ok {
 		if reflect.TypeOf(inputObject.Type) != reflect.TypeOf(typ) {
 			var t = reflect.TypeOf(inputObject.Type)
@@ -137,6 +148,7 @@ func (s *Schema) InputObject(name string, typ interface{}) *InputObject {
 	inputObject := &InputObject{
 		Name:   name,
 		Type:   typ,
+		Desc:   desc,
 		Fields: map[string]*inputFieldResolve{},
 	}
 	s.inputObjects[name] = inputObject
@@ -172,19 +184,23 @@ func (s *Schema) InputObject(name string, typ interface{}) *InputObject {
 //		panic(err)
 //	}
 //}
-func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...UnmarshalFunc) {
-
-	if _, ok := s.scalars[name]; ok {
-		panic("duplicate scalar name")
-	}
+func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...UnmarshalFunc) *Scalar {
 
 	typ := reflect.TypeOf(tp)
 	if typ.Kind() == reflect.Ptr {
 		panic("type should not be of pointer type")
 	}
 
+	if name == "" {
+		name = typ.Name()
+	}
+
+	if _, ok := s.scalars[name]; ok {
+		panic("duplicate scalar name")
+	}
+
 	if len(ufn) == 0 {
-		if !reflect.PtrTo(typ).Implements(reflect.TypeOf(reflect.TypeOf((*json.Unmarshaler)(nil)).Elem())) {
+		if !reflect.PtrTo(typ).Implements(reflect.TypeOf(new(json.Unmarshaler)).Elem()) {
 			panic("either UnmarshalFunc should be provided or the provided type should implement json.Unmarshaler interface")
 		}
 		ufn = make([]UnmarshalFunc, 1)
@@ -225,10 +241,11 @@ func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...Unmarsh
 		ParseValue: func(i interface{}) (interface{}, error) {
 			outVal := reflect.New(typ).Elem()
 			err := ufn[0](i, outVal)
-			return outVal, err
+			return outVal.Interface(), err
 		},
 	}
 	s.scalars[name] = scalar
+	return scalar
 }
 
 // Union registers a map as a GraphQL Union in our Schema.
@@ -244,8 +261,8 @@ func (s *Schema) Union(name string, union interface{}, desc string) {
 	types := make([]reflect.Type, typ.NumField())
 	for i := 0; i < typ.NumField(); i++ {
 		f := typ.Field(i)
-		if f.Type.Kind() != reflect.Struct {
-			panic("union's member must be a struct")
+		if f.Type.Kind() != reflect.Ptr || f.Type.Elem().Kind() != reflect.Struct {
+			panic("union's member must be a object struct ptr")
 		}
 		types[i] = f.Type
 	}
@@ -253,26 +270,37 @@ func (s *Schema) Union(name string, union interface{}, desc string) {
 	s.unions[name] = &Union{
 		Name:  name,
 		Desc:  desc,
+		Type:  union,
 		Types: types,
 	}
 }
 
 // Interface registers a Interface as a GraphQL Interface in our Schema.
-func (s *Schema) Interface(name string, desc string, typ interface{}, fn interface{}) *Interface {
-
-	if reflect.TypeOf(typ).Kind() != reflect.Interface {
-		panic("Interface must be a interface Type in Golang")
+func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc string) *Interface {
+	if typ == nil {
+		panic("nil type passed to Interface")
+	}
+	t := reflect.TypeOf(typ)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Interface {
+		panic("Interface must be a interface Operation in Golang")
 	}
 	if _, ok := s.interfaces[name]; ok {
-		panic("duplicate interface of " + name)
+		panic("duplicate interface " + name)
 	}
-
-	return &Interface{
+	s.interfaces[name] = &Interface{
 		Name: name,
 		Desc: desc,
 		Type: typ,
 		Fn:   fn,
 	}
+	return s.interfaces[name]
+}
+
+func (s *Schema) GetInterface(name string) *Interface {
+	return s.interfaces[name]
 }
 
 type query struct{}
@@ -319,7 +347,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	for _, object := range s.objects {
 		typ := reflect.TypeOf(object.Type)
 		if typ.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("object.Type should be a struct, not %s", typ.String())
+			return nil, fmt.Errorf("object.Operation should be a struct, not %s", typ.String())
 		}
 
 		if _, ok := sb.objects[typ]; ok {
@@ -332,7 +360,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	for _, inputObject := range s.inputObjects {
 		typ := reflect.TypeOf(inputObject.Type)
 		if typ.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("inputObject.Type should be a struct, not %s", typ.String())
+			return nil, fmt.Errorf("inputObject.Operation should be a struct, not %s", typ.String())
 		}
 
 		if _, ok := sb.inputObjects[typ]; ok {
@@ -345,7 +373,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	for _, enum := range s.enums {
 		typ := reflect.TypeOf(enum.Type)
 		if typ.Kind() == reflect.Ptr {
-			return nil, fmt.Errorf("Enum.Type should not be a pointer")
+			return nil, fmt.Errorf("Enum.Operation should not be a pointer")
 		}
 		if _, ok := sb.enums[typ]; ok {
 			return nil, fmt.Errorf("duplicate enum for %s", typ.String())
@@ -355,8 +383,11 @@ func (s *Schema) Build() (*internal.Schema, error) {
 
 	for _, inter := range s.interfaces {
 		typ := reflect.TypeOf(inter.Type)
+		if typ.Kind() == reflect.Ptr {
+			typ = typ.Elem()
+		}
 		if typ.Kind() != reflect.Interface {
-			return nil, fmt.Errorf("inputObject.Type should be a interface, not %s", typ.String())
+			return nil, fmt.Errorf("inputObject.Operation should be a interface, not %s", typ.String())
 		}
 
 		if _, ok := sb.interfaces[typ]; ok {
@@ -368,9 +399,6 @@ func (s *Schema) Build() (*internal.Schema, error) {
 
 	for _, scalar := range s.scalars {
 		typ := reflect.TypeOf(scalar.Type)
-		if typ.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("Scalar.Type should  be a struct")
-		}
 		if _, ok := sb.scalars[typ]; ok {
 			return nil, fmt.Errorf("duplicate scalar for %s", typ.String())
 		}
@@ -380,7 +408,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	for _, union := range s.unions {
 		typ := reflect.TypeOf(union.Type)
 		if typ.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("Scalar.Type should  be a struct")
+			return nil, fmt.Errorf("Scalar.Operation should  be a struct")
 		}
 		if _, ok := sb.unions[typ]; ok {
 			return nil, fmt.Errorf("duplicate union for %s", typ.String())

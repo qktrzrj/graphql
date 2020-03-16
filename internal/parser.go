@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/internal/ast"
+	"github.com/unrotten/graphql/internal/kinds"
 	"github.com/unrotten/graphql/internal/token"
+	"strings"
 	"text/scanner"
 )
 
@@ -31,11 +33,11 @@ func Parse(source string) (*ast.Document, *errors.GraphQLError) {
 }
 
 func parseDocument(l *lexer) *ast.Document {
-	doc := &ast.Document{}
+	doc := &ast.Document{Kind: kinds.Document, Loc: l.location()}
 	l.skipWhitespace()
 	for l.peek() != token.EOF {
 		if l.peek() == token.BRACE_L {
-			op := &ast.OperationDefinition{Type: ast.Query, Loc: l.location()}
+			op := &ast.OperationDefinition{Kind: kinds.OperationDefinition, Operation: ast.Query, Loc: l.location()}
 			op.SelectionSet = parseSelectionSet(l)
 			doc.Definition = append(doc.Definition, op)
 			continue
@@ -75,6 +77,7 @@ func parseFragmentDefinition(l *lexer) *ast.FragmentDefinition {
 	directives := parseDirectives(l)
 	selectionSet := parseSelectionSet(l)
 	return &ast.FragmentDefinition{
+		Kind:          kinds.FragmentDefinition,
 		Name:          name,
 		TypeCondition: typeCondition,
 		Directives:    directives,
@@ -90,11 +93,11 @@ func parseFragmentName(l *lexer) *ast.Name {
 		panic(syntaxError(`Unexpected Name "on".`))
 	}
 	l.advance(token.NAME)
-	return &ast.Name{Name: name, Loc: loc}
+	return &ast.Name{Kind: kinds.Name, Name: name, Loc: loc}
 }
 
 func parseOperationDefinition(l *lexer, opType ast.OperationType) *ast.OperationDefinition {
-	operationDefinition := &ast.OperationDefinition{Type: opType}
+	operationDefinition := &ast.OperationDefinition{Kind: kinds.OperationDefinition, Operation: opType}
 	if l.peek() == token.NAME {
 		operationDefinition.Name = parseName(l)
 	}
@@ -120,7 +123,7 @@ func parseVariableDefinitions(l *lexer) []*ast.VariableDefinition {
 }
 
 /**
- * VariableDefinition : Variable : Type DefaultValue?
+ * VariableDefinition : Variable : Operation DefaultValue?
  */
 func parseVariableDefinition(l *lexer) *ast.VariableDefinition {
 	loc := l.location()
@@ -137,6 +140,7 @@ func parseVariableDefinition(l *lexer) *ast.VariableDefinition {
 		directives = parseDirectives(l)
 	}
 	return &ast.VariableDefinition{
+		Kind:         kinds.VariableDefinition,
 		Var:          variable,
 		Type:         t,
 		DefaultValue: defaultValue,
@@ -146,7 +150,7 @@ func parseVariableDefinition(l *lexer) *ast.VariableDefinition {
 }
 
 /**
- * Type :
+ * Operation :
  *   - NamedType
  *   - ListType
  *   - NonNullType
@@ -156,16 +160,19 @@ func parseType(l *lexer) ast.Type {
 	var t ast.Type
 	switch l.peek() {
 	case token.BRACKET_L:
+		l.advance(token.BRACKET_L)
 		t = parseType(l)
 		fallthrough
 	case token.BRACKET_R:
-		t = &ast.List{t, loc}
+		l.advance(token.BRACKET_R)
+		t = &ast.List{Kind: kinds.List, Type: t, Loc: loc}
 	case token.NAME:
 		t = parseNamed(l)
 	}
 	if l.peek() == token.BANG {
 		l.advance(token.BANG)
 		return &ast.NonNull{
+			Kind: kinds.NonNull,
 			Type: t,
 			Loc:  loc,
 		}
@@ -178,7 +185,7 @@ func parseName(l *lexer) *ast.Name {
 	loc := l.location()
 	name := l.scan.TokenText()
 	l.advance(token.NAME)
-	return &ast.Name{Name: name, Loc: loc}
+	return &ast.Name{Kind: kinds.Name, Name: name, Loc: loc}
 }
 
 /**
@@ -186,7 +193,7 @@ func parseName(l *lexer) *ast.Name {
  */
 func parseNamed(l *lexer) *ast.Named {
 	loc := l.location()
-	return &ast.Named{Name: parseName(l), Loc: loc}
+	return &ast.Named{Kind: kinds.Named, Name: parseName(l), Loc: loc}
 }
 
 /**
@@ -201,6 +208,7 @@ func parseSelectionSet(l *lexer) *ast.SelectionSet {
 	}
 	l.advance(token.BRACE_R)
 	return &ast.SelectionSet{
+		Kind:       kinds.SelectionSet,
 		Selections: selections,
 		Loc:        loc,
 	}
@@ -230,7 +238,7 @@ func parseArguments(l *lexer) []*ast.Argument {
 		name := parseName(l)
 		l.advance(token.COLON)
 		value := parseValueLiteral(l, false)
-		args = append(args, &ast.Argument{Name: name, Value: value, Loc: loc})
+		args = append(args, &ast.Argument{Kind: kinds.Argument, Name: name, Value: value, Loc: loc})
 	}
 	l.advance(token.PAREN_R)
 	return args
@@ -265,19 +273,23 @@ func parseValueLiteral(l *lexer, constOnly bool) ast.Value {
 	case token.INT:
 		value := l.scan.TokenText()
 		l.advance(token.INT)
-		return &ast.IntValue{Value: value, Loc: loc}
+		return &ast.IntValue{Kind: kinds.IntValue, Value: value, Loc: loc}
 	case token.FLOAT:
 		value := l.scan.TokenText()
 		l.advance(token.FLOAT)
-		return &ast.FloatValue{Value: value, Loc: loc}
+		return &ast.FloatValue{Kind: kinds.FloatValue, Value: value, Loc: loc}
 	case token.STRING:
 		value := l.scan.TokenText()
+		value = strings.TrimPrefix(value, `"`)
+		value = strings.TrimSuffix(value, `"`)
 		l.advance(token.STRING)
-		return &ast.StringValue{Value: value, Loc: loc}
+		return &ast.StringValue{Kind: kinds.StringValue, Value: value, Loc: loc}
 	case token.RAWSTRING:
 		value := l.scan.TokenText()
+		value = strings.TrimPrefix(value, "`")
+		value = strings.TrimSuffix(value, "`")
 		l.advance(token.RAWSTRING)
-		return &ast.StringValue{Value: value, Loc: loc}
+		return &ast.StringValue{Kind: kinds.StringValue, Value: value, Loc: loc}
 	case token.NAME:
 		tokenText := l.scan.TokenText()
 		l.advance(token.NAME)
@@ -286,11 +298,11 @@ func parseValueLiteral(l *lexer, constOnly bool) ast.Value {
 			if tokenText == "true" {
 				value = true
 			}
-			return &ast.BooleanValue{Value: value, Loc: loc}
+			return &ast.BooleanValue{Kind: kinds.BooleanValue, Value: value, Loc: loc}
 		} else if tokenText == "null" {
-			return &ast.NullValue{Loc: loc}
+			return &ast.NullValue{Kind: kinds.NullValue, Loc: loc}
 		} else {
-			return &ast.EnumValue{Value: tokenText, Loc: loc}
+			return &ast.EnumValue{Kind: kinds.EnumValue, Value: tokenText, Loc: loc}
 		}
 	}
 	panic(syntaxError(fmt.Sprintf("Unexpected %q.", scanner.TokenString(l.peek()))))
@@ -309,7 +321,7 @@ func parseList(l *lexer, constOnly bool) *ast.ListValue {
 		list = append(list, parseValueLiteral(l, constOnly))
 	}
 	l.advance(token.BRACKET_R)
-	return &ast.ListValue{Values: list, Loc: loc}
+	return &ast.ListValue{Kind: kinds.ListValue, Values: list, Loc: loc}
 }
 
 /**
@@ -325,7 +337,7 @@ func parseObject(l *lexer, constOnly bool) *ast.ObjectValue {
 		fields = append(fields, parseObjectField(l, constOnly))
 	}
 	l.advance(token.BRACE_R)
-	return &ast.ObjectValue{Fields: fields, Loc: loc}
+	return &ast.ObjectValue{Kind: kinds.ObjectValue, Fields: fields, Loc: loc}
 }
 
 /**
@@ -336,7 +348,7 @@ func parseObjectField(l *lexer, constOnly bool) *ast.ObjectField {
 	name := parseNamed(l)
 	l.advance(token.COLON)
 	value := parseValueLiteral(l, constOnly)
-	return &ast.ObjectField{Name: name, Value: value, Loc: loc}
+	return &ast.ObjectField{Kind: kinds.ObjectField, Name: name, Value: value, Loc: loc}
 }
 
 /**
@@ -345,7 +357,7 @@ func parseObjectField(l *lexer, constOnly bool) *ast.ObjectField {
 func parseVariable(l *lexer) *ast.Variable {
 	loc := l.location()
 	l.advance(token.DOLLAR)
-	return &ast.Variable{Name: parseName(l), Loc: loc}
+	return &ast.Variable{Kind: kinds.Variable, Name: parseName(l), Loc: loc}
 }
 
 /**
@@ -354,7 +366,7 @@ func parseVariable(l *lexer) *ast.Variable {
  * Alias : Name :
  */
 func parseField(l *lexer) *ast.Field {
-	field := &ast.Field{}
+	field := &ast.Field{Kind: kinds.Field, Loc: l.location()}
 	field.Alias = parseName(l)
 	field.Name = field.Alias
 	if l.peek() == token.COLON {
@@ -385,11 +397,12 @@ func parseFragment(l *lexer) ast.Selection {
 	l.advance(token.SPREAD)
 	l.advance(token.SPREAD)
 
-	fragment := &ast.InlineFragment{Loc: loc}
+	fragment := &ast.InlineFragment{Kind: kinds.InlineFragment, Loc: loc}
 	if l.peek() == token.NAME {
 		name := parseName(l)
 		if name.Name != "on" {
 			spread := &ast.FragmentSpread{
+				Kind: kinds.FragmentSpread,
 				Name: name,
 				Loc:  loc,
 			}
@@ -420,7 +433,7 @@ func parseDirectives(l *lexer) []*ast.Directive {
 func parseDirective(l *lexer) *ast.Directive {
 	loc := l.location()
 	l.advance(token.AT)
-	directive := &ast.Directive{}
+	directive := &ast.Directive{Kind: kinds.Directive}
 	directive.Name = parseName(l)
 	directive.Name.Loc.Column--
 	directive.Loc = loc

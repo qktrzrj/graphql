@@ -21,10 +21,12 @@ import (
 // GraphQL services which only seek to provide GraphQL query execution may choose to
 // only include ExecutableDefinition and omit the TypeSystemDefinition and TypeSystemExtension rules from Definition.
 type Document struct {
-	Definition []Definition
+	Kind       string          `json:"kind"`
+	Definition []Definition    `json:"definition"`
+	Loc        errors.Location `json:"loc"`
 }
 
-func (d *Document) Kind() string {
+func (d *Document) GetKind() string {
 	return kinds.Document
 }
 

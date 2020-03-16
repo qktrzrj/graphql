@@ -30,12 +30,13 @@ import (
 //   name: String
 // }
 type Directive struct {
-	Name *Name
-	Args []*Argument
-	Loc  errors.Location
+	Kind string          `json:"kind"`
+	Name *Name           `json:"name"`
+	Args []*Argument     `json:"arguments"`
+	Loc  errors.Location `json:"loc"`
 }
 
-func (d *Directive) Kind() string {
+func (d *Directive) GetKind() string {
 	return kinds.Directive
 }
 

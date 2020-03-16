@@ -37,11 +37,12 @@ var _ Value = (*ObjectValue)(nil)
 // or ExponentIndicator follows then the token must only be interpreted as a possible FloatValue.
 // No other NameStart character can follow. For example the sequences 0x123 and 123L have no valid lexical representations.
 type IntValue struct {
-	Value string
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Value string          `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (i *IntValue) Kind() string {
+func (i *IntValue) GetKind() string {
 	return kinds.IntValue
 }
 
@@ -63,11 +64,12 @@ func (i *IntValue) GetValue() interface{} { return i.Value }
 //
 // A FloatValue must not be followed by a NameStart. For example the sequence 0x1.2p3 has no valid lexical representation.
 type FloatValue struct {
-	Value string
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Value string          `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (f *FloatValue) Kind() string {
+func (f *FloatValue) GetKind() string {
 	return kinds.FloatValue
 }
 
@@ -79,11 +81,12 @@ func (f *FloatValue) GetValue() interface{} { return f.Value }
 
 // NullValue
 type NullValue struct {
-	Loc errors.Location
+	Kind string          `json:"kind"`
+	Loc  errors.Location `json:"loc"`
 }
 
-func (n *NullValue) Kind() string {
-	return "null"
+func (n *NullValue) GetKind() string {
+	return kinds.NullValue
 }
 
 func (n *NullValue) Location() errors.Location {
@@ -96,11 +99,12 @@ func (n *NullValue) GetValue() interface{} {
 
 // The two keywords true and false represent the two boolean values.
 type BooleanValue struct {
-	Value bool
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Value bool            `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (b *BooleanValue) Kind() string {
+func (b *BooleanValue) GetKind() string {
 	return kinds.BooleanValue
 }
 
@@ -116,11 +120,12 @@ func (b *BooleanValue) GetValue() interface{} { return b.Value }
 // The empty string "" must not be followed by another " otherwise it would be interpreted as the beginning of a block string.
 // As an example, the source """""" can only be interpreted as a single empty block string and not three empty strings.
 type StringValue struct {
-	Value string
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Value string          `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (s *StringValue) Kind() string {
+func (s *StringValue) GetKind() string {
 	return kinds.StringValue
 }
 
@@ -151,7 +156,7 @@ func (s *StringValue) GetValue() interface{} { return s.Value }
 //	Loc errors.Location
 //}
 //
-//func (n *NullValue) Kind() string {
+//func (n *NullValue) GetKind() string {
 //	return "null"
 //}
 //
@@ -168,11 +173,12 @@ func (s *StringValue) GetValue() interface{} { return s.Value }
 // Enum values are only used in contexts where the precise enumeration type is known.
 // Therefore it’s not necessary to supply an enumeration type name in the literal.
 type EnumValue struct {
-	Value string
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Value string          `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (e *EnumValue) Kind() string {
+func (e *EnumValue) GetKind() string {
 	return kinds.EnumValue
 }
 
@@ -189,11 +195,12 @@ func (e *EnumValue) GetValue() interface{} {
 //
 // Commas are optional throughout GraphQL so trailing commas are allowed and repeated commas do not represent missing values.
 type ListValue struct {
-	Loc    errors.Location
-	Values []Value
+	Kind   string          `json:"kind"`
+	Loc    errors.Location `json:"loc"`
+	Values []Value         `json:"values"`
 }
 
-func (l *ListValue) Kind() string {
+func (l *ListValue) GetKind() string {
 	return kinds.ListValue
 }
 
@@ -221,11 +228,12 @@ func (l *ListValue) GetValue() interface{} {
 //   nearestThing(location: { lat: -53.211, lon: 12.43 })
 // }
 type ObjectValue struct {
-	Fields []*ObjectField
-	Loc    errors.Location
+	Kind   string          `json:"kind"`
+	Fields []*ObjectField  `json:"fields"`
+	Loc    errors.Location `json:"loc"`
 }
 
-func (o *ObjectValue) Kind() string {
+func (o *ObjectValue) GetKind() string {
 	return kinds.ObjectValue
 }
 
@@ -238,12 +246,13 @@ func (o *ObjectValue) GetValue() interface{} {
 }
 
 type ObjectField struct {
-	Name  *Named
-	Value Value
-	Loc   errors.Location
+	Kind  string          `json:"kind"`
+	Name  *Named          `json:"name"`
+	Value Value           `json:"value"`
+	Loc   errors.Location `json:"loc"`
 }
 
-func (o *ObjectField) Kind() string {
+func (o *ObjectField) GetKind() string {
 	return kinds.ObjectField
 }
 
