@@ -6,6 +6,7 @@ import (
 	"github.com/unrotten/graphql/internal/ast"
 	"github.com/unrotten/graphql/internal/kinds"
 	"github.com/unrotten/graphql/internal/token"
+	"strconv"
 	"strings"
 	"text/scanner"
 )
@@ -441,4 +442,59 @@ func parseDirective(l *lexer) *ast.Directive {
 		directive.Args = parseArguments(l)
 	}
 	return directive
+}
+
+func ValueToJson(value ast.Value, vars map[string]interface{}) (interface{}, error) {
+	switch value := value.(type) {
+	case *ast.IntValue:
+		v, err := strconv.ParseInt(value.Value, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("bad int arg: %s", err)
+		}
+		return float64(v), nil
+	case *ast.FloatValue:
+		v, err := strconv.ParseFloat(value.Value, 64)
+		if err != nil {
+			return nil, fmt.Errorf("bad float arg: %s", err)
+		}
+		return v, nil
+	case *ast.StringValue:
+		return value.Value, nil
+	case *ast.BooleanValue:
+		return value.Value, nil
+	case *ast.EnumValue:
+		return value.Value, nil
+	case *ast.Variable:
+		actual, ok := vars[value.Name.Name]
+		if !ok {
+			return nil, nil
+		}
+		return actual, nil
+	case *ast.ObjectValue:
+		obj := make(map[string]interface{})
+		for _, field := range value.Fields {
+			name := field.Name.Name.Name
+			if _, found := obj[name]; found {
+				return nil, fmt.Errorf("duplicate field")
+			}
+			value, err := ValueToJson(field.Value, vars)
+			if err != nil {
+				return nil, err
+			}
+			obj[name] = value
+		}
+		return obj, nil
+	case *ast.ListValue:
+		list := make([]interface{}, 0, len(value.Values))
+		for _, item := range value.Values {
+			value, err := ValueToJson(item, vars)
+			if err != nil {
+				return nil, err
+			}
+			list = append(list, value)
+		}
+		return list, nil
+	default:
+		return nil, fmt.Errorf("unsupported value type: %s", value.GetKind())
+	}
 }

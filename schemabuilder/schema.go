@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/unrotten/graphql/internal"
 	"reflect"
+	"regexp"
 	"strconv"
 )
 
@@ -16,6 +17,7 @@ type Schema struct {
 	interfaces   map[string]*Interface
 	unions       map[string]*Union
 	scalars      map[string]*Scalar
+	directives   map[string]*Directive
 }
 
 // NewSchema creates a new schema.
@@ -37,13 +39,7 @@ type DescField struct {
 	Desc  string
 }
 
-type DefaultValueField struct {
-	Field        interface{}
-	DefaultValue interface{}
-}
-
 var DescFieldTyp = reflect.TypeOf(DescField{})
-var DefaultValueTyp = reflect.TypeOf(DefaultValueField{})
 
 // Enum registers an enumType in the schema. The val should be any arbitrary value
 // of the enumType to be used for reflection, and the enumMap should be
@@ -291,12 +287,40 @@ func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc st
 		panic("duplicate interface " + name)
 	}
 	s.interfaces[name] = &Interface{
-		Name: name,
-		Desc: desc,
-		Type: typ,
-		Fn:   fn,
+		Name:          name,
+		Desc:          desc,
+		Type:          typ,
+		Fn:            fn,
+		PossibleTypes: map[string]*Object{},
 	}
 	return s.interfaces[name]
+}
+
+var NameRegExp = regexp.MustCompile("^[_a-zA-Z][_a-zA-Z0-9]*$")
+
+// defined directive for schema
+//
+// use as :
+// s.Directive("dir",[]string{"Field"},struct{ a scalar `graphql:"a,nonnull,is a"` },"testdir")
+func (s *Schema) Directive(name string, locs []string, args interface{}, desc string) {
+	// Ensure directive is named
+	if name == "" {
+		panic("Directive must be named.")
+	}
+	// Ensure directive name is valid
+	if !NameRegExp.MatchString(name) {
+		panic(`Names must match /^[_a-zA-Z][_a-zA-Z0-9]*$/ but "%v" does not.`)
+	}
+	// Ensure locations are provided for directive
+	if len(locs) == 0 {
+		panic("Must provide locations for directive.")
+	}
+	s.directives[name] = &Directive{
+		Name: name,
+		Desc: desc,
+		Type: args,
+		Locs: locs,
+	}
 }
 
 func (s *Schema) GetInterface(name string) *Interface {
@@ -334,8 +358,7 @@ func (s *Schema) Subscription() *Object {
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
 func (s *Schema) Build() (*internal.Schema, error) {
 	sb := &schemaBuilder{
-		types: make(map[reflect.Type]internal.Type, len(s.objects)+len(s.enums)+len(s.inputObjects)+len(s.interfaces)+
-			len(s.scalars)+len(s.unions)),
+		types:        make(map[reflect.Type]internal.Type),
 		objects:      make(map[reflect.Type]*Object, len(s.objects)),
 		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
 		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
@@ -343,6 +366,8 @@ func (s *Schema) Build() (*internal.Schema, error) {
 		scalars:      make(map[reflect.Type]*Scalar, len(s.scalars)),
 		unions:       make(map[reflect.Type]*Union, len(s.unions)),
 	}
+
+	directives := make(map[string]*internal.Directive, len(s.directives))
 
 	for _, object := range s.objects {
 		typ := reflect.TypeOf(object.Type)
@@ -432,6 +457,25 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	for _, t := range sb.types {
 		if named, ok := t.(internal.NamedType); ok {
 			typeMap[named.TypeName()] = named
+		}
+	}
+	for name, dir := range s.directives {
+		if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
+			var args []*internal.Argument
+			for _, arg := range a {
+				if f, ok := dir.Fields[arg.Name]; ok {
+					arg.DefaultValue = f.DefaultValue
+				}
+				args = append(args, arg)
+			}
+			directives[name] = &internal.Directive{
+				Name: dir.Name,
+				Desc: dir.Desc,
+				Args: args,
+				Locs: dir.Locs,
+			}
+		} else {
+			return nil, err
 		}
 	}
 	return &internal.Schema{

@@ -58,10 +58,11 @@ type Object struct {
 // what fields are in common across all types,
 // as well as a function to determine which type is actually used when the field is resolved.
 type Interface struct {
-	Name    string            `json:"name"`
-	Desc    string            `json:"description"`
-	Resolve TypeResolve       `json:"-"`
-	Fields  map[string]*Field `json:"fields"`
+	Name          string             `json:"name"`
+	Desc          string             `json:"description"`
+	Resolve       TypeResolve        `json:"-"`
+	Fields        map[string]*Field  `json:"fields"`
+	PossibleTypes map[string]*Object `json:"-"`
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -172,10 +173,18 @@ type InputField struct {
 
 //Schema used to validate and resolve the queries
 type Schema struct {
-	TypeMap      map[string]NamedType
-	Query        Type `json:"query"`
-	Mutation     Type `json:"mutation"`
-	Subscription Type `json:"subscription"`
+	TypeMap      map[string]NamedType  `json:"-"`
+	Directives   map[string]*Directive `json:"-"`
+	Query        Type                  `json:"query"`
+	Mutation     Type                  `json:"mutation"`
+	Subscription Type                  `json:"subscription"`
+}
+
+type Directive struct {
+	Name string      `json:"name"`
+	Desc string      `json:"description"`
+	Args []*Argument `json:"arguments"`
+	Locs []string    `json:"locations"`
 }
 
 func IsScalarType(typ Type) bool {
@@ -190,14 +199,14 @@ func IsScalarType(typ Type) bool {
 	return false
 }
 
-func IsArgumentType(typ Type) bool {
+func IsInputType(typ Type) bool {
 	switch t := typ.(type) {
 	case *Scalar, *InputObject, *Enum:
 		return true
 	case *List:
-		return IsArgumentType(t.Type)
+		return IsInputType(t.Type)
 	case *NonNull:
-		return IsArgumentType(t.Type)
+		return IsInputType(t.Type)
 	}
 	return false
 }

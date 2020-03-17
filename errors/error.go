@@ -29,6 +29,10 @@ type Location struct {
 	Column int `json:"column"`
 }
 
+func (a Location) Before(b Location) bool {
+	return a.Line < b.Line || (a.Line == b.Line && a.Column < b.Column)
+}
+
 func New(format string, arg ...interface{}) *GraphQLError {
 	return &GraphQLError{
 		Message: fmt.Sprintf(format, arg...),

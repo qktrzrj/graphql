@@ -31,7 +31,7 @@ type InputObject struct {
 type HandleFunc func(ctx context.Context) error
 
 // FieldFuncOption is an func for the variadic options that can be passed
-// to a FieldFunc for configuring options on that function.
+// to a FieldDefault for configuring options on that function.
 type FieldFuncOption func(resolve ...*fieldResolve) HandleFunc
 
 var NonNullField FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
@@ -53,11 +53,12 @@ type Enum struct {
 
 // Interface is a representation of graphql interface
 type Interface struct {
-	Name         string
-	Desc         string
-	Type         interface{}
-	Fn           interface{}
-	FieldResolve map[string]*fieldResolve
+	Name          string
+	Desc          string
+	Type          interface{}
+	PossibleTypes map[string]*Object
+	Fn            interface{}
+	FieldResolve  map[string]*fieldResolve
 }
 
 // Union is a representation of graphql union
@@ -77,18 +78,26 @@ type Scalar struct {
 	ParseValue func(interface{}) (interface{}, error)
 }
 
-// FieldFunc exposes a field on an object. The function f can take a number of
+type Directive struct {
+	Name   string
+	Desc   string
+	Type   interface{}
+	Locs   []string
+	Fields map[string]*inputFieldResolve
+}
+
+// FieldDefault exposes a field on an object. The function f can take a number of
 // optional arguments:
 // func([ctx graphql.context], [o *Operation], [args struct {}]) ([Result], [error])
 //
 // For example, for an object of type User, a fullName field might take just an
 // instance of the object:
-//    user.FieldFunc("fullName", func(u *User) string {
+//    user.FieldDefault("fullName", func(u *User) string {
 //       return u.FirstName + " " + u.LastName
 //    })
 //
 // An addUser mutation field might take both a context and arguments:
-//    mutation.FieldFunc("addUser", func(ctx context.context, args struct{
+//    mutation.FieldDefault("addUser", func(ctx context.context, args struct{
 //        FirstName string
 //        LastName  string
 //    }) (int, error) {
@@ -114,13 +123,22 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 	s.FieldResolve[name] = resolve
 }
 
-// FieldFunc is used to expose the fields of an input object
-func (io *InputObject) FieldFunc(name string, defaultValue interface{}) {
+// FieldDefault is used to expose the fields of an input object
+func (io *InputObject) FieldDefault(name string, defaultValue interface{}) {
 	if getField(io.Type, name) == nil {
-		panic("inputObject FieldFunc param name must be the name or tag of struct field")
+		panic("inputObject FieldDefault param name must be the name or tag of struct field")
 	}
 	if _, ok := io.Fields[name]; ok {
-		panic("duplicate name")
+		panic("duplicate defaultValue: " + name)
+	}
+	resolve := &inputFieldResolve{DefaultValue: defaultValue}
+	io.Fields[name] = resolve
+}
+
+// FieldDefault is used to expose the fields of an input object
+func (io *Directive) FieldDefault(name string, defaultValue interface{}) {
+	if _, ok := io.Fields[name]; ok {
+		panic("duplicate defaultValue: " + name)
 	}
 	resolve := &inputFieldResolve{DefaultValue: defaultValue}
 	io.Fields[name] = resolve
@@ -136,6 +154,7 @@ func (s *Object) InterfaceFunc(list ...*Interface) {
 		if typ := reflect.TypeOf(s.Type); !typ.Implements(interfaceTyp) && !reflect.PtrTo(typ).Implements(interfaceTyp) {
 			panic(fmt.Sprintf("object %s must implements interface %s", s.Name, i.Name))
 		}
+		i.PossibleTypes[s.Name] = s
 		s.Interface = append(s.Interface, i)
 	}
 }
@@ -143,7 +162,7 @@ func (s *Object) InterfaceFunc(list ...*Interface) {
 // similar as object's func, but haven't middleware func , and given name must be same as interface's method
 func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
 	if getMethod(s.Type, name) == nil {
-		panic("Interface FieldFunc param name must be the name of interface's method")
+		panic("Interface FieldDefault param name must be the name of interface's method")
 	}
 	if s.FieldResolve == nil {
 		s.FieldResolve = make(map[string]*fieldResolve)

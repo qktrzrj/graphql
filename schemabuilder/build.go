@@ -155,11 +155,20 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*internal.Interface, er
 		if err != nil {
 			return nil, err
 		}
+		possibleTypes := make(map[string]*internal.Object)
+		for name, object := range inter.PossibleTypes {
+			t, err := sb.getType(reflect.TypeOf(object.Type))
+			if err != nil {
+				return nil, err
+			}
+			possibleTypes[name] = t.(*internal.Object)
+		}
 		return &internal.Interface{
-			Name:    inter.Name,
-			Desc:    inter.Desc,
-			Resolve: function,
-			Fields:  fields,
+			Name:          inter.Name,
+			Desc:          inter.Desc,
+			Resolve:       function,
+			Fields:        fields,
+			PossibleTypes: possibleTypes,
 		}, nil
 	}
 	return nil, nil
@@ -197,20 +206,6 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			Desc:   input.Desc,
 		}
 		sb.types[typ] = inputObject
-		for name, inputResolve := range input.Fields {
-			fieldTyp, err := sb.getType(getField(input.Type, name))
-			if err != nil {
-				return err
-			}
-			if !internal.IsScalarType(fieldTyp) {
-				return fmt.Errorf("inputObject field type must be scalar")
-			}
-			inputObject.Fields[name] = &internal.InputField{
-				Name:         name,
-				Type:         fieldTyp,
-				DefaultValue: inputResolve.DefaultValue,
-			}
-		}
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
 			name := field.Name
@@ -224,22 +219,16 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 					nonnull = true
 				}
 			}
-			if _, ok := inputObject.Fields[name]; ok {
-				continue
-			}
 			var defaultValue interface{}
-			if field.Type == DefaultValueTyp {
-				value := reflect.ValueOf(input)
-				defaultField := value.Field(i)
-				field, _ = defaultField.Type().FieldByName("Field")
-				defaultValue = defaultField.FieldByName("DefaultValue").Interface()
+			if f, ok := input.Fields[name]; ok {
+				defaultValue = f.DefaultValue
 			}
 			fieldTyp, err := sb.getType(field.Type)
 			if err != nil {
 				return err
 			}
-			if !internal.IsScalarType(fieldTyp) {
-				return fmt.Errorf("inputObject field type must be scalar")
+			if !internal.IsInputType(fieldTyp) {
+				return fmt.Errorf("inputObject field type must be inputType")
 			}
 			inputObject.Fields[name] = &internal.InputField{
 				Name:         name,
@@ -355,42 +344,11 @@ func (sb *schemaBuilder) getField(fn interface{}, source reflect.Type) (*interna
 			case reflect.TypeOf(source):
 				fctx.hasSource = true
 			default:
-				if inTyp.Kind() != reflect.Struct {
-					return nil, fmt.Errorf("object args must be struct")
-				}
 				fctx.hasArg = true
-				for ii := 0; ii < inTyp.NumField(); ii++ {
-					field := inTyp.Field(i)
-					fieldTyp, err := sb.getType(field.Type)
-					if err != nil {
-						return nil, err
-					}
-					if !internal.IsArgumentType(fieldTyp) {
-						return nil, fmt.Errorf("object field type can not be interface,union and object")
-					}
-					name := field.Name
-					var nonnull bool
-					var desc string
-					if tag := field.Tag.Get("graphql"); tag == "-" {
-						continue
-					} else if tag != "" {
-						split := strings.Split(tag, ",")
-						name = split[0]
-						if len(split) > 1 && split[1] == "nonnull" {
-							nonnull = true
-						}
-						if len(split) > 2 {
-							desc = split[2]
-						}
-					}
-					args[name] = &internal.Argument{
-						Name: name,
-						Type: fieldTyp,
-						Desc: desc,
-					}
-					if nonnull {
-						args[name].Type = &internal.NonNull{Type: args[name].Type}
-					}
+				var err error
+				args, err = sb.getArguments(inTyp)
+				if err != nil {
+					return nil, err
 				}
 			}
 		}
@@ -504,6 +462,47 @@ func (sb *schemaBuilder) getTypeFunction(fn interface{}) (internal.TypeResolve, 
 		}
 		return nil, nil
 	}, nil
+}
+
+func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*internal.Argument, error) {
+	args := make(map[string]*internal.Argument)
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("object args must be struct")
+	}
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldTyp, err := sb.getType(field.Type)
+		if err != nil {
+			return nil, err
+		}
+		if !internal.IsInputType(fieldTyp) {
+			return nil, fmt.Errorf("object field type can not be interface,union and object")
+		}
+		name := field.Name
+		var nonnull bool
+		var desc string
+		if tag := field.Tag.Get("graphql"); tag == "-" {
+			continue
+		} else if tag != "" {
+			split := strings.Split(tag, ",")
+			name = split[0]
+			if len(split) > 1 && split[1] == "nonnull" {
+				nonnull = true
+			}
+			if len(split) > 2 {
+				desc = split[2]
+			}
+		}
+		args[name] = &internal.Argument{
+			Name: name,
+			Type: fieldTyp,
+			Desc: desc,
+		}
+		if nonnull {
+			args[name].Type = &internal.NonNull{Type: args[name].Type}
+		}
+	}
+	return args, nil
 }
 
 type funcContext struct {
