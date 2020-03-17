@@ -2,11 +2,11 @@ package validation
 
 import (
 	"fmt"
+	"github.com/unrotten/graphql/builder"
+	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/builder/kinds"
+	"github.com/unrotten/graphql/builder/utils"
 	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/internal"
-	"github.com/unrotten/graphql/internal/ast"
-	"github.com/unrotten/graphql/internal/kinds"
-	"github.com/unrotten/graphql/internal/utils"
 	"math"
 	"reflect"
 	"strconv"
@@ -18,13 +18,13 @@ type varSet map[*ast.VariableDefinition]struct{}
 type selectionPair struct{ a, b ast.Selection }
 
 type fieldInfo struct {
-	sf     *internal.Field
-	parent internal.NamedType
+	sf     *builder.Field
+	parent builder.NamedType
 }
 
 type context struct {
-	schema           *internal.Schema
-	doc              *ast.Document
+	schema           *builder.Schema
+	doc              *builder.Document
 	errs             []*errors.GraphQLError
 	opErrs           map[*ast.OperationDefinition][]*errors.GraphQLError
 	usedVars         map[*ast.OperationDefinition]varSet
@@ -52,50 +52,37 @@ type opContext struct {
 	ops []*ast.OperationDefinition
 }
 
-func newContext(s *internal.Schema, doc *ast.Document, maxDepth int) *context {
+func newContext(s *builder.Schema, doc *builder.Document, maxDepth int) *context {
 	return &context{
 		schema:           s,
 		doc:              doc,
 		opErrs:           make(map[*ast.OperationDefinition][]*errors.GraphQLError),
 		usedVars:         make(map[*ast.OperationDefinition]varSet),
 		fragmentNameUsed: make(map[string]bool),
-		fragments:        make(map[string]*ast.FragmentDefinition, 0),
 		fieldMap:         make(map[*ast.Field]fieldInfo),
 		overlapValidated: make(map[selectionPair]struct{}),
 		maxDepth:         maxDepth,
 	}
 }
 
-func validate(s *internal.Schema, doc *ast.Document, vars map[string]interface{}, maxDepth int) []*errors.GraphQLError {
+func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interface{}, maxDepth int) []*errors.GraphQLError {
 	ctx := newContext(s, doc, maxDepth)
-	var operations []*ast.OperationDefinition
-	var fragments []*ast.FragmentDefinition
-	for _, definition := range doc.Definition {
-		switch o := definition.(type) {
-		case *ast.OperationDefinition:
-			operations = append(operations, o)
-		case *ast.FragmentDefinition:
-			fragments = append(fragments, o)
-			ctx.fragments[o.Name.Name] = o
-		default:
-			ctx.addErr(o.Location(), "Executable Definitions", "GraphQL execution will only consider the executable definitions Operation and Fragment. Type system definitions and extensions are not executable, and are not considered during execution.")
-		}
-	}
 
 	opNames := make(nameSet)
-	for _, op := range operations {
+	fragUsedBy := make(map[*ast.FragmentDefinition][]*ast.OperationDefinition)
+	for _, op := range doc.Operations {
 		ctx.usedVars[op] = make(varSet)
 		opc := &opContext{ctx, []*ast.OperationDefinition{op}}
 
 		// Check if max depth is exceeded, if it's set. If max depth is exceeded,
-		// don't continue to validate the document and exit early.
+		// don't continue to Validate the document and exit early.
 		if validateMaxDepth(opc, op.SelectionSet.Selections, 1) {
 			return ctx.errs
 		}
 		if op.Name != nil && op.Name.Name != "" {
 			validateName(ctx, opNames, op.Name, "Operation Name Uniqueness", "operation")
 		}
-		if (op.Name == nil || op.Name.Name == "") && len(operations) > 1 {
+		if (op.Name == nil || op.Name.Name == "") && len(doc.Operations) > 1 {
 			ctx.addErr(op.Loc, "Lone Anonymous Operation", "This anonymous operation must be the only defined operation.")
 		}
 
@@ -115,7 +102,7 @@ func validate(s *internal.Schema, doc *ast.Document, vars map[string]interface{}
 
 			vTyp := utils.TypeFromAst(s, v.Type)
 			variableName := v.Var.Name.Name
-			if vTyp != nil && !internal.IsInputType(vTyp) {
+			if vTyp != nil && !builder.IsInputType(vTyp) {
 				typeName := v.Type.String()
 				ctx.addErr(v.Loc, "Variables Are Input Types", `Variable "$%s" cannot be non-input type "%s".`, variableName, typeName)
 			}
@@ -124,10 +111,10 @@ func validate(s *internal.Schema, doc *ast.Document, vars map[string]interface{}
 				validateLiteral(opc, v.DefaultValue)
 
 				if vTyp != nil {
-					if nn, ok := vTyp.(*internal.NonNull); ok {
+					if nn, ok := vTyp.(*builder.NonNull); ok {
 						ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", "Variable %q of type %q is required and will not use the default value. Perhaps you meant to use type %q.", "$"+v.Var.Name.Name, vTyp, nn.Type)
 					} else if vars[variableName] == nil {
-						value, err := internal.ValueToJson(v.DefaultValue, nil)
+						value, err := builder.ValueToJson(v.DefaultValue, nil)
 						if err != nil {
 							ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", err.Error())
 						} else {
@@ -144,20 +131,70 @@ func validate(s *internal.Schema, doc *ast.Document, vars map[string]interface{}
 			validateValue(opc, v, vars[v.Var.Name.Name], vTyp)
 		}
 
-		var obj *internal.Object
+		var obj *builder.Object
 		switch op.Operation {
 		case ast.Query:
-			obj = s.Query.(*internal.Object)
+			obj = s.Query.(*builder.Object)
 		case ast.Mutation:
-			obj = s.Mutation.(*internal.Object)
+			obj = s.Mutation.(*builder.Object)
 		case ast.Subscription:
-			obj = s.Subscription.(*internal.Object)
+			obj = s.Subscription.(*builder.Object)
 		default:
 			panic("unreachable")
 		}
 		validateSelectionSet(opc, op.SelectionSet.Selections, obj)
+
+		fragUsed := make(map[*ast.FragmentDefinition]struct{})
+		markUsedFragments(ctx, op.SelectionSet.Selections, fragUsed)
+		for frag := range fragUsed {
+			fragUsedBy[frag] = append(fragUsedBy[frag], op)
+		}
 	}
-	return nil
+
+	fragNames := make(nameSet)
+	fragVisited := make(map[*ast.FragmentDefinition]struct{})
+	for _, frag := range doc.Fragments {
+		opc := &opContext{ctx, fragUsedBy[frag]}
+
+		validateName(ctx, fragNames, frag.Name, "UniqueFragmentNames", "fragment")
+		validateDirectives(opc, "FRAGMENT_DEFINITION", frag.Directives)
+
+		t := unwrapType(utils.TypeFromAst(ctx.schema, frag.TypeCondition))
+		// continue even if t is nil
+		if t != nil && !canBeFragment(t) {
+			ctx.addErr(frag.TypeCondition.Loc, "FragmentsOnCompositeTypes", "Fragment %q cannot condition on non composite type %q.", frag.Name.Name, t)
+			continue
+		}
+
+		validateSelectionSet(opc, frag.SelectionSet.Selections, t)
+
+		if _, ok := fragVisited[frag]; !ok {
+			detectFragmentCycle(ctx, frag.SelectionSet.Selections, fragVisited, nil, map[string]int{frag.Name.Name: 0})
+		}
+	}
+
+	for _, frag := range doc.Fragments {
+		if len(fragUsedBy[frag]) == 0 {
+			ctx.addErr(frag.Loc, "NoUnusedFragments", "Fragment %q is never used.", frag.Name.Name)
+		}
+	}
+
+	for _, op := range doc.Operations {
+		ctx.errs = append(ctx.errs, ctx.opErrs[op]...)
+
+		opUsedVars := ctx.usedVars[op]
+		for _, v := range op.Vars {
+			if _, ok := opUsedVars[v]; !ok {
+				opSuffix := ""
+				if op.Name.Name != "" {
+					opSuffix = fmt.Sprintf(" in operation %q", op.Name.Name)
+				}
+				ctx.addErr(v.Loc, "NoUnusedVariables", "Variable %q is never used%s.", "$"+v.Var.Name.Name, opSuffix)
+			}
+		}
+	}
+
+	return ctx.errs
 }
 
 type nameSet map[string]errors.Location
@@ -176,7 +213,7 @@ func validateNameCustomMsg(c *context, set nameSet, name *ast.Name, rule string,
 	set[name.Name] = name.Loc
 }
 
-func validateSelectionSet(c *opContext, sels []ast.Selection, t internal.NamedType) {
+func validateSelectionSet(c *opContext, sels []ast.Selection, t builder.NamedType) {
 	for _, sel := range sels {
 		validateSelection(c, sel, t)
 	}
@@ -188,31 +225,31 @@ func validateSelectionSet(c *opContext, sels []ast.Selection, t internal.NamedTy
 	}
 }
 
-func validateSelection(c *opContext, sel ast.Selection, t internal.NamedType) {
+func validateSelection(c *opContext, sel ast.Selection, t builder.NamedType) {
 	switch sel := sel.(type) {
 	case *ast.Field:
 		validateDirectives(c, "FIELD", sel.Directives)
 
 		fieldName := sel.Name.Name
-		var f *internal.Field
+		var f *builder.Field
 		switch fieldName {
 		case "__typename":
-			f = &internal.Field{
+			f = &builder.Field{
 				Name: "__typename",
 				Type: c.schema.TypeMap["String"],
 			}
 		case "__schema":
-			f = &internal.Field{
+			f = &builder.Field{
 				Name: "__schema",
 				Type: c.schema.TypeMap["__Schema"],
 			}
 		case "__type":
-			f = &internal.Field{
+			f = &builder.Field{
 				Name: "__type",
-				Args: map[string]*internal.Argument{
+				Args: map[string]*builder.Argument{
 					"name": {
 						Name: "name",
-						Type: &internal.NonNull{Type: c.schema.TypeMap["String"]},
+						Type: &builder.NonNull{Type: c.schema.TypeMap["String"]},
 					},
 				},
 				Type: c.schema.TypeMap["__Type"],
@@ -238,7 +275,7 @@ func validateSelection(c *opContext, sel ast.Selection, t internal.NamedType) {
 			)
 		}
 
-		var ft internal.Type
+		var ft builder.Type
 		if f != nil {
 			ft = f.Type
 			sf := hasSubfields(ft)
@@ -384,15 +421,100 @@ func (c *context) validateFieldOverlap(a, b *ast.Field) ([]string, []errors.Loca
 	return reasons, locs
 }
 
-func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, vtyp internal.Type) {
+func markUsedFragments(c *context, sels []ast.Selection, fragUsed map[*ast.FragmentDefinition]struct{}) {
+	for _, sel := range sels {
+		switch sel := sel.(type) {
+		case *ast.Field:
+			if sel.SelectionSet != nil && sel.SelectionSet.Selections != nil {
+				markUsedFragments(c, sel.SelectionSet.Selections, fragUsed)
+			}
+
+		case *ast.InlineFragment:
+			markUsedFragments(c, sel.SelectionSet.Selections, fragUsed)
+
+		case *ast.FragmentSpread:
+			frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
+			if frag == nil {
+				return
+			}
+
+			if _, ok := fragUsed[frag]; ok {
+				return
+			}
+			fragUsed[frag] = struct{}{}
+			markUsedFragments(c, frag.SelectionSet.Selections, fragUsed)
+
+		default:
+			panic("unreachable")
+		}
+	}
+}
+
+func detectFragmentCycle(c *context, sels []ast.Selection, fragVisited map[*ast.FragmentDefinition]struct{}, spreadPath []*ast.FragmentSpread, spreadPathIndex map[string]int) {
+	for _, sel := range sels {
+		detectFragmentCycleSel(c, sel, fragVisited, spreadPath, spreadPathIndex)
+	}
+}
+
+func detectFragmentCycleSel(c *context, sel ast.Selection, fragVisited map[*ast.FragmentDefinition]struct{}, spreadPath []*ast.FragmentSpread, spreadPathIndex map[string]int) {
+	switch sel := sel.(type) {
+	case *ast.Field:
+		if sel.SelectionSet != nil && sel.SelectionSet.Selections != nil {
+			detectFragmentCycle(c, sel.SelectionSet.Selections, fragVisited, spreadPath, spreadPathIndex)
+		}
+
+	case *ast.InlineFragment:
+		detectFragmentCycle(c, sel.SelectionSet.Selections, fragVisited, spreadPath, spreadPathIndex)
+
+	case *ast.FragmentSpread:
+		frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
+		if frag == nil {
+			return
+		}
+
+		spreadPath = append(spreadPath, sel)
+		if i, ok := spreadPathIndex[frag.Name.Name]; ok {
+			cyclePath := spreadPath[i:]
+			via := ""
+			if len(cyclePath) > 1 {
+				names := make([]string, len(cyclePath)-1)
+				for i, frag := range cyclePath[:len(cyclePath)-1] {
+					names[i] = frag.Name.Name
+				}
+				via = " via " + strings.Join(names, ", ")
+			}
+
+			locs := make([]errors.Location, len(cyclePath))
+			for i, frag := range cyclePath {
+				locs[i] = frag.Loc
+			}
+			c.addErrMultiLoc(locs, "NoFragmentCycles", "Cannot spread fragment %q within itself%s.", frag.Name.Name, via)
+			return
+		}
+
+		if _, ok := fragVisited[frag]; ok {
+			return
+		}
+		fragVisited[frag] = struct{}{}
+
+		spreadPathIndex[frag.Name.Name] = len(spreadPath)
+		detectFragmentCycle(c, frag.SelectionSet.Selections, fragVisited, spreadPath, spreadPathIndex)
+		delete(spreadPathIndex, frag.Name.Name)
+
+	default:
+		panic("unreachable")
+	}
+}
+
+func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, vtyp builder.Type) {
 	switch vtyp := vtyp.(type) {
-	case *internal.NonNull:
+	case *builder.NonNull:
 		if val == nil {
 			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value null.\nExpected type \"%s\", found null.", v.Var.Name, vtyp)
 			return
 		}
 		validateValue(ctx, v, val, vtyp.Type)
-	case *internal.List:
+	case *builder.List:
 		if vtyp == nil {
 			return
 		}
@@ -403,7 +525,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 		for _, vi := range vv {
 			validateValue(ctx, v, vi, vtyp.Type)
 		}
-	case *internal.Enum:
+	case *builder.Enum:
 		if val == nil {
 			return
 		}
@@ -418,7 +540,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 			}
 		}
 		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", v.Var.Name, e, vtyp, e)
-	case *internal.InputObject:
+	case *builder.InputObject:
 		if val == nil {
 			return
 		}
@@ -506,13 +628,13 @@ func validateLiteral(c *opContext, l ast.Value) {
 	}
 }
 
-func validateValueType(c *opContext, v ast.Value, t internal.Type) (bool, string) {
+func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string) {
 	if v, ok := v.(*ast.Variable); ok {
 		for _, op := range c.ops {
 			if v2 := utils.GetVar(op.Vars, v.Name); v2 != nil {
 				t2 := utils.TypeFromAst(c.schema, v2.Type)
-				if _, ok := t2.(*internal.NonNull); !ok && v2.DefaultValue != nil {
-					t2 = &internal.NonNull{Type: t2}
+				if _, ok := t2.(*builder.NonNull); !ok && v2.DefaultValue != nil {
+					t2 = &builder.NonNull{Type: t2}
 				}
 				if !typeCanBeUsedAs(t2, t) {
 					c.addErrMultiLoc([]errors.Location{v2.Loc, v.Loc}, "VariablesInAllowedPosition", "Variable %q of type %q used in position expecting type %q.", "$"+v.Name.Name, t2, t)
@@ -522,7 +644,7 @@ func validateValueType(c *opContext, v ast.Value, t internal.Type) (bool, string
 		return true, ""
 	}
 
-	if nn, ok := t.(*internal.NonNull); ok {
+	if nn, ok := t.(*builder.NonNull); ok {
 		if isNull(v) {
 			return false, fmt.Sprintf("Expected %q, found null.", t)
 		}
@@ -533,11 +655,11 @@ func validateValueType(c *opContext, v ast.Value, t internal.Type) (bool, string
 	}
 
 	switch t := t.(type) {
-	case *internal.Scalar, *internal.Enum:
+	case *builder.Scalar, *builder.Enum:
 		if validateBasicValue(v, t) {
 			return true, ""
 		}
-	case *internal.List:
+	case *builder.List:
 		list, ok := v.(*ast.ListValue)
 		if !ok {
 			return validateValueType(c, v, t.Type) // single value instead of list
@@ -549,7 +671,7 @@ func validateValueType(c *opContext, v ast.Value, t internal.Type) (bool, string
 		}
 		return true, ""
 
-	case *internal.InputObject:
+	case *builder.InputObject:
 		v, ok := v.(*ast.ObjectValue)
 		if !ok {
 			return false, fmt.Sprintf("Expected %q, found not an object.", t)
@@ -573,7 +695,7 @@ func validateValueType(c *opContext, v ast.Value, t internal.Type) (bool, string
 				}
 			}
 			if !found {
-				if _, ok := iv.Type.(*internal.NonNull); ok && iv.DefaultValue == nil {
+				if _, ok := iv.Type.(*builder.NonNull); ok && iv.DefaultValue == nil {
 					return false, fmt.Sprintf("In field %q: Expected %q, found null.", iv.Name, iv.Type)
 				}
 			}
@@ -584,9 +706,9 @@ func validateValueType(c *opContext, v ast.Value, t internal.Type) (bool, string
 	return false, fmt.Sprintf("Expected type %q, found %s.", t, v)
 }
 
-func validateBasicValue(v ast.Value, t internal.Type) bool {
+func validateBasicValue(v ast.Value, t builder.Type) bool {
 	switch t := t.(type) {
-	case *internal.Scalar:
+	case *builder.Scalar:
 		switch t.Name {
 		case "Int":
 			if v.GetKind() != kinds.IntValue {
@@ -610,7 +732,7 @@ func validateBasicValue(v ast.Value, t internal.Type) bool {
 			return true
 		}
 
-	case *internal.Enum:
+	case *builder.Enum:
 		if v.GetKind() != kinds.EnumValue {
 			return false
 		}
@@ -667,7 +789,7 @@ func validateArgumentLiterals(c *opContext, args []*ast.Argument) {
 	}
 }
 
-func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*internal.Argument, loc errors.Location, owner1, owner2 func() string) {
+func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*builder.Argument, loc errors.Location, owner1, owner2 func() string) {
 	for _, selArg := range args {
 		arg := utils.GetArgumentType(argDecls, selArg.Name.Name)
 		if arg == nil {
@@ -680,7 +802,7 @@ func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*inter
 		}
 	}
 	for _, decl := range argDecls {
-		if _, ok := decl.Type.(*internal.NonNull); ok {
+		if _, ok := decl.Type.(*builder.NonNull); ok {
 			if argNodes := utils.GetArgumentNode(args, decl.Name); argNodes == nil {
 				c.addErr(loc, "ProvidedNonNullArguments", "%s argument %q of type %q is required but not provided.", owner2(), decl.Name, decl.Type)
 			}
@@ -694,8 +816,8 @@ func argumentsConflict(a, b []*ast.Argument) bool {
 	}
 	for _, argA := range a {
 		valB := utils.GetArgumentNode(b, argA.Name.Name)
-		valueA, _ := internal.ValueToJson(argA.Value, nil)
-		valueB, _ := internal.ValueToJson(valB.Value, nil)
+		valueA, _ := builder.ValueToJson(argA.Value, nil)
+		valueB, _ := builder.ValueToJson(valB.Value, nil)
 		if valB == nil || !reflect.DeepEqual(valueA, valueB) {
 			return true
 		}
@@ -703,9 +825,9 @@ func argumentsConflict(a, b []*ast.Argument) bool {
 	return false
 }
 
-func isLeaf(t internal.Type) bool {
+func isLeaf(t builder.Type) bool {
 	switch t.(type) {
-	case *internal.Scalar, *internal.Enum:
+	case *builder.Scalar, *builder.Enum:
 		return true
 	default:
 		return false
@@ -717,13 +839,13 @@ func isNull(lit interface{}) bool {
 	return ok
 }
 
-func typeCanBeUsedAs(t, as internal.Type) bool {
-	nnT, okT := t.(*internal.NonNull)
+func typeCanBeUsedAs(t, as builder.Type) bool {
+	nnT, okT := t.(*builder.NonNull)
 	if okT {
 		t = nnT.Type
 	}
 
-	nnAs, okAs := as.(*internal.NonNull)
+	nnAs, okAs := as.(*builder.NonNull)
 	if okAs {
 		as = nnAs.Type
 		if !okT {
@@ -735,49 +857,49 @@ func typeCanBeUsedAs(t, as internal.Type) bool {
 		return true
 	}
 
-	if lT, ok := t.(*internal.List); ok {
-		if lAs, ok := as.(*internal.List); ok {
+	if lT, ok := t.(*builder.List); ok {
+		if lAs, ok := as.(*builder.List); ok {
 			return typeCanBeUsedAs(lT.Type, lAs.Type)
 		}
 	}
 	return false
 }
 
-func fields(t internal.Type) map[string]*internal.Field {
+func fields(t builder.Type) map[string]*builder.Field {
 	switch t := t.(type) {
-	case *internal.Object:
+	case *builder.Object:
 		return t.Fields
-	case *internal.Interface:
+	case *builder.Interface:
 		return t.Fields
 	default:
 		return nil
 	}
 }
 
-func hasSubfields(t internal.Type) bool {
+func hasSubfields(t builder.Type) bool {
 	switch t := t.(type) {
-	case *internal.Object, *internal.Interface, *internal.Union:
+	case *builder.Object, *builder.Interface, *builder.Union:
 		return true
-	case *internal.List:
+	case *builder.List:
 		return hasSubfields(t.Type)
-	case *internal.NonNull:
+	case *builder.NonNull:
 		return hasSubfields(t.Type)
 	default:
 		return false
 	}
 }
 
-func unwrapType(t internal.Type) internal.NamedType {
+func unwrapType(t builder.Type) builder.NamedType {
 	if t == nil {
 		return nil
 	}
 	for {
 		switch t2 := t.(type) {
-		case internal.NamedType:
+		case builder.NamedType:
 			return t2
-		case *internal.List:
+		case *builder.List:
 			t = t2.Type
-		case *internal.NonNull:
+		case *builder.NonNull:
 			t = t2.Type
 		default:
 			panic("unreachable")
@@ -785,7 +907,7 @@ func unwrapType(t internal.Type) internal.NamedType {
 	}
 }
 
-func compatible(a, b internal.Type) bool {
+func compatible(a, b builder.Type) bool {
 	for _, pta := range possibleTypes(a) {
 		for _, ptb := range possibleTypes(b) {
 			if pta == ptb {
@@ -796,18 +918,18 @@ func compatible(a, b internal.Type) bool {
 	return false
 }
 
-func possibleTypes(t internal.Type) []*internal.Object {
+func possibleTypes(t builder.Type) []*builder.Object {
 	switch t := t.(type) {
-	case *internal.Object:
-		return []*internal.Object{t}
-	case *internal.Interface:
-		var res []*internal.Object
+	case *builder.Object:
+		return []*builder.Object{t}
+	case *builder.Interface:
+		var res []*builder.Object
 		for _, t := range t.PossibleTypes {
 			res = append(res, t)
 		}
 		return res
-	case *internal.Union:
-		var res []*internal.Object
+	case *builder.Union:
+		var res []*builder.Object
 		for _, t := range t.Types {
 			res = append(res, t)
 		}
@@ -817,24 +939,24 @@ func possibleTypes(t internal.Type) []*internal.Object {
 	}
 }
 
-func canBeFragment(t internal.Type) bool {
+func canBeFragment(t builder.Type) bool {
 	switch t.(type) {
-	case *internal.Object, *internal.Interface, *internal.Union:
+	case *builder.Object, *builder.Interface, *builder.Union:
 		return true
 	default:
 		return false
 	}
 }
 
-func typesCompatible(a, b internal.Type) bool {
-	al, aIsList := a.(*internal.List)
-	bl, bIsList := b.(*internal.List)
+func typesCompatible(a, b builder.Type) bool {
+	al, aIsList := a.(*builder.List)
+	bl, bIsList := b.(*builder.List)
 	if aIsList || bIsList {
 		return aIsList && bIsList && typesCompatible(al.Type, bl.Type)
 	}
 
-	ann, aIsNN := a.(*internal.NonNull)
-	bnn, bIsNN := b.(*internal.NonNull)
+	ann, aIsNN := a.(*builder.NonNull)
+	bnn, bIsNN := b.(*builder.NonNull)
 	if aIsNN || bIsNN {
 		return aIsNN && bIsNN && typesCompatible(ann.Type, bnn.Type)
 	}

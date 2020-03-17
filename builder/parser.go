@@ -1,23 +1,38 @@
-package internal
+package builder
 
 import (
 	"fmt"
+	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/builder/kinds"
+	"github.com/unrotten/graphql/builder/token"
 	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/internal/ast"
-	"github.com/unrotten/graphql/internal/kinds"
-	"github.com/unrotten/graphql/internal/token"
 	"strconv"
 	"strings"
 	"text/scanner"
 )
 
-type Query struct {
-	Name string
-	Kind string
-	*ast.SelectionSet
+func Parse(source string) (*Document, *errors.GraphQLError) {
+	doc, err := ParseDocument(source)
+	if err != nil {
+		return nil, err
+	}
+	var operations []*ast.OperationDefinition
+	var fragments []*ast.FragmentDefinition
+	for _, definition := range doc.Definition {
+		switch o := definition.(type) {
+		case *ast.OperationDefinition:
+			operations = append(operations, o)
+		case *ast.FragmentDefinition:
+			fragments = append(fragments, o)
+		}
+	}
+	return &Document{
+		Operations: operations,
+		Fragments:  fragments,
+	}, nil
 }
 
-func Parse(source string) (*ast.Document, *errors.GraphQLError) {
+func ParseDocument(source string) (*ast.Document, *errors.GraphQLError) {
 	if source == "" {
 		return nil, errors.New("Must provide Source. Received: undefined.")
 	}
@@ -444,18 +459,18 @@ func parseDirective(l *lexer) *ast.Directive {
 	return directive
 }
 
-func ValueToJson(value ast.Value, vars map[string]interface{}) (interface{}, error) {
+func ValueToJson(value ast.Value, vars map[string]interface{}) (interface{}, *errors.GraphQLError) {
 	switch value := value.(type) {
 	case *ast.IntValue:
 		v, err := strconv.ParseInt(value.Value, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("bad int arg: %s", err)
+			return nil, errors.New("bad int arg: %s", err)
 		}
 		return float64(v), nil
 	case *ast.FloatValue:
 		v, err := strconv.ParseFloat(value.Value, 64)
 		if err != nil {
-			return nil, fmt.Errorf("bad float arg: %s", err)
+			return nil, errors.New("bad float arg: %s", err)
 		}
 		return v, nil
 	case *ast.StringValue:
@@ -475,7 +490,7 @@ func ValueToJson(value ast.Value, vars map[string]interface{}) (interface{}, err
 		for _, field := range value.Fields {
 			name := field.Name.Name.Name
 			if _, found := obj[name]; found {
-				return nil, fmt.Errorf("duplicate field")
+				return nil, errors.New("duplicate field")
 			}
 			value, err := ValueToJson(field.Value, vars)
 			if err != nil {
@@ -495,6 +510,6 @@ func ValueToJson(value ast.Value, vars map[string]interface{}) (interface{}, err
 		}
 		return list, nil
 	default:
-		return nil, fmt.Errorf("unsupported value type: %s", value.GetKind())
+		return nil, errors.New("unsupported value type: %s", value.GetKind())
 	}
 }

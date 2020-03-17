@@ -2,23 +2,23 @@ package utils
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/internal"
-	"github.com/unrotten/graphql/internal/ast"
-	"github.com/unrotten/graphql/internal/kinds"
+	"github.com/unrotten/graphql/builder"
+	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/builder/kinds"
 )
 
-func TypeFromAst(schema *internal.Schema, node ast.Node) internal.Type {
-	var innerType internal.Type
+func TypeFromAst(schema *builder.Schema, node ast.Node) builder.Type {
+	var innerType builder.Type
 	switch node.GetKind() {
 	case kinds.List:
 		innerType = TypeFromAst(schema, node.(ast.WrappingType).OfType())
 		if innerType != nil {
-			return &internal.List{Type: innerType}
+			return &builder.List{Type: innerType}
 		}
 	case kinds.NonNull:
 		innerType = TypeFromAst(schema, node.(ast.WrappingType).OfType())
 		if innerType != nil {
-			return &internal.NonNull{Type: innerType}
+			return &builder.NonNull{Type: innerType}
 		}
 	case kinds.Named:
 		return schema.TypeMap[node.(*ast.Named).Name.Name]
@@ -35,16 +35,16 @@ func GetVar(vars []*ast.VariableDefinition, name *ast.Name) *ast.VariableDefinit
 	return nil
 }
 
-func GetObjectField(fields []*ast.ObjectField, name *ast.Name) *ast.ObjectField {
-	for _, f := range fields {
-		if f.Name.Name == name {
-			return f
+func GetOperation(ops []*ast.OperationDefinition, name ast.OperationType) *ast.OperationDefinition {
+	for _, op := range ops {
+		if op.Operation == name {
+			return op
 		}
 	}
 	return nil
 }
 
-func GetArgumentType(args []*internal.Argument, name string) *internal.Argument {
+func GetArgumentType(args []*builder.Argument, name string) *builder.Argument {
 	for _, a := range args {
 		if a.Name == name {
 			return a
@@ -62,10 +62,19 @@ func GetArgumentNode(args []*ast.Argument, name string) *ast.Argument {
 	return nil
 }
 
-func GetArgumentTypes(args map[string]*internal.Argument) []*internal.Argument {
-	var res []*internal.Argument
+func GetArgumentTypes(args map[string]*builder.Argument) []*builder.Argument {
+	var res []*builder.Argument
 	for _, arg := range args {
 		res = append(res, arg)
 	}
 	return res
+}
+
+func GetFragment(frags []*ast.FragmentDefinition, name string) *ast.FragmentDefinition {
+	for _, a := range frags {
+		if a.Name.Name == name {
+			return a
+		}
+	}
+	return nil
 }

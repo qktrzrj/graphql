@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/unrotten/graphql/internal"
+	"github.com/unrotten/graphql/builder"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -60,6 +60,9 @@ var DescFieldTyp = reflect.TypeOf(DescField{})
 //     "three": enumType(3),
 //   },"")
 func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface{}, desc string) {
+	if name == "" {
+		panic("enum must provide name")
+	}
 	if _, ok := s.enums[name]; ok {
 		panic(fmt.Sprintf("duplicate enum %s", name))
 	}
@@ -356,9 +359,9 @@ func (s *Schema) Subscription() *Object {
 // Build takes the schema we have built on our Query, Mutation and Subscription starting points and builds a full graphql.Schema
 // We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
-func (s *Schema) Build() (*internal.Schema, error) {
+func (s *Schema) Build() (*builder.Schema, error) {
 	sb := &schemaBuilder{
-		types:        make(map[reflect.Type]internal.Type),
+		types:        make(map[reflect.Type]builder.Type),
 		objects:      make(map[reflect.Type]*Object, len(s.objects)),
 		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
 		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
@@ -367,7 +370,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 		unions:       make(map[reflect.Type]*Union, len(s.unions)),
 	}
 
-	directives := make(map[string]*internal.Directive, len(s.directives))
+	directives := make(map[string]*builder.Directive, len(s.directives))
 
 	for _, object := range s.objects {
 		typ := reflect.TypeOf(object.Type)
@@ -453,22 +456,22 @@ func (s *Schema) Build() (*internal.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	typeMap := make(map[string]internal.NamedType, len(sb.types))
+	typeMap := make(map[string]builder.NamedType, len(sb.types))
 	for _, t := range sb.types {
-		if named, ok := t.(internal.NamedType); ok {
+		if named, ok := t.(builder.NamedType); ok {
 			typeMap[named.TypeName()] = named
 		}
 	}
 	for name, dir := range s.directives {
 		if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
-			var args []*internal.Argument
+			var args []*builder.Argument
 			for _, arg := range a {
 				if f, ok := dir.Fields[arg.Name]; ok {
 					arg.DefaultValue = f.DefaultValue
 				}
 				args = append(args, arg)
 			}
-			directives[name] = &internal.Directive{
+			directives[name] = &builder.Directive{
 				Name: dir.Name,
 				Desc: dir.Desc,
 				Args: args,
@@ -478,7 +481,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 			return nil, err
 		}
 	}
-	return &internal.Schema{
+	return &builder.Schema{
 		TypeMap:      typeMap,
 		Query:        queryTyp,
 		Mutation:     mutationTyp,
@@ -487,7 +490,7 @@ func (s *Schema) Build() (*internal.Schema, error) {
 }
 
 //MustBuild builds a schema and panics if an error occurs.
-func (s *Schema) MustBuild() *internal.Schema {
+func (s *Schema) MustBuild() *builder.Schema {
 	built, err := s.Build()
 	if err != nil {
 		panic(err)

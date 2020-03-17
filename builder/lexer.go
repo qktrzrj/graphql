@@ -1,10 +1,10 @@
-package internal
+package builder
 
 import (
 	"bytes"
 	"fmt"
+	"github.com/unrotten/graphql/builder/token"
 	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/internal/token"
 	"strings"
 	"text/scanner"
 )

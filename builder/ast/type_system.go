@@ -1,8 +1,8 @@
 package ast
 
 import (
+	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/internal/kinds"
 )
 
 // The GraphQL Operation system describes the capabilities of a GraphQL server and is used to determine if a query is valid.

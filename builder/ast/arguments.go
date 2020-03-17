@@ -1,8 +1,8 @@
 package ast
 
 import (
+	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/internal/kinds"
 )
 
 // Fields are conceptually functions which return values, and occasionally accept arguments which alter their behavior.

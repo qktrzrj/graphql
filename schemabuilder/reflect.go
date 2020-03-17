@@ -34,3 +34,22 @@ func getMethod(source interface{}, name string) reflect.Type {
 	}
 	return nil
 }
+
+func GetField(source reflect.Value, name string) *reflect.Value {
+	typ := reflect.ValueOf(source)
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		fieldTyp := typ.Type().Field(i)
+		tag := fieldTyp.Tag.Get("graphql")
+		if tag == "" || tag == "-" {
+			if fieldTyp.Name == name {
+				return &field
+			}
+		}
+		split := strings.Split(tag, ",")
+		if split[0] == name {
+			return &field
+		}
+	}
+	return nil
+}

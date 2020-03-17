@@ -1,8 +1,9 @@
-package internal
+package builder
 
 import (
 	"context"
 	"fmt"
+	"github.com/unrotten/graphql/builder/ast"
 )
 
 // Operation corresponds to GraphQLType
@@ -181,22 +182,82 @@ type Schema struct {
 }
 
 type Directive struct {
-	Name string      `json:"name"`
-	Desc string      `json:"description"`
-	Args []*Argument `json:"arguments"`
-	Locs []string    `json:"locations"`
+	Name    string                 `json:"name"`
+	Desc    string                 `json:"description"`
+	Args    []*Argument            `json:"arguments"`
+	ArgVals map[string]interface{} `json:"-"`
+	Locs    []string               `json:"locations"`
 }
 
-func IsScalarType(typ Type) bool {
-	switch t := typ.(type) {
-	case *Scalar:
-		return true
-	case *List:
-		return IsScalarType(t.Type)
-	case *NonNull:
-		return IsScalarType(t.Type)
-	}
-	return false
+type Document struct {
+	Operations []*ast.OperationDefinition
+	Fragments  []*ast.FragmentDefinition
+}
+
+// SelectionSet represents a core GraphQL query
+//
+// A SelectionSet can contain multiple fields and multiple fragments. For
+// example, the query
+//
+//     {
+//       name
+//       ... UserFragment
+//       memberships {
+//         organization { name }
+//       }
+//     }
+//
+// results in a root SelectionSet with two selections (name and memberships),
+// and one fragment (UserFragment). The subselection `organization { name }`
+// is stored in the memberships selection.
+//
+// Because GraphQL allows multiple fragments with the same name or alias,
+// selections are stored in an array instead of a map.
+type SelectionSet struct {
+	Selections []*Selection
+	Fragments  []*FragmentSpread
+}
+
+//Selection : A selection represents a part of a GraphQL query
+//
+// The selection
+//
+//     me: user(id: 166) { name }
+//
+// has name "user" (representing the source field to be queried), alias "me"
+// (representing the name to be used in the output), args id: 166 (representing
+// arguments passed to the source field to be queried), and subselection name
+// representing the information to be queried from the resulting object.
+type Selection struct {
+	Name         string
+	Alias        string
+	Args         interface{}
+	SelectionSet *SelectionSet
+	Directives   []*Directive
+
+	UseBatch bool
+
+	// The parsed flag is used to make sure the args for this Selection are only
+	// parsed once.
+	parsed bool
+}
+
+// A FragmentDefinition represents a reusable part of a GraphQL query
+//
+// The On part of a FragmentDefinition represents the type of source object for which
+// this FragmentDefinition should be used. That is not currently implemented in this
+// package.
+type FragmentDefinition struct {
+	Name         string
+	On           string
+	SelectionSet *SelectionSet
+}
+
+// FragmentSpread represents a usage of a FragmentDefinition. Alongside the information
+// about the fragment, it includes any directives used at that spread location.
+type FragmentSpread struct {
+	Fragment   *FragmentDefinition
+	Directives []*Directive
 }
 
 func IsInputType(typ Type) bool {

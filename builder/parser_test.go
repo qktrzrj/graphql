@@ -1,11 +1,11 @@
-package internal
+package builder
 
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/internal/ast"
-	"github.com/unrotten/graphql/internal/kinds"
 	"github.com/unrotten/graphql/resource"
 	"testing"
 )
@@ -14,18 +14,18 @@ var NilGraphQLError *errors.GraphQLError
 
 func TestParser(t *testing.T) {
 	t.Run("asserts that a source to parse was provided", func(t *testing.T) {
-		_, err := Parse("")
+		_, err := ParseDocument("")
 		assert.EqualError(t, err, "graphql: Must provide Source. Received: undefined.")
 	})
 
 	t.Run("parse provides useful errors", func(t *testing.T) {
-		_, err := Parse("{")
+		_, err := ParseDocument("{")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected Ident, found "".`,
 			Locations: []errors.Location{{1, 2}},
 		}, err)
 
-		_, err = Parse(`
+		_, err = ParseDocument(`
       { ...MissingOn }
       fragment MissingOn Operation
     `)
@@ -34,31 +34,31 @@ func TestParser(t *testing.T) {
 			Locations: []errors.Location{{3, 26}},
 		}, err)
 
-		_, err = Parse("{ field: {} }")
+		_, err = ParseDocument("{ field: {} }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected Ident, found "{".`,
 			Locations: []errors.Location{{1, 10}},
 		}, err)
 
-		_, err = Parse("notAnOperation Foo { field }")
+		_, err = ParseDocument("notAnOperation Foo { field }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Unexpected "notAnOperation".`,
 			Locations: []errors.Location{{1, 16}},
 		}, err)
 
-		_, err = Parse("...")
+		_, err = ParseDocument("...")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected Ident, found ".".`,
 			Locations: []errors.Location{{1, 1}},
 		}, err)
 
-		_, err = Parse(`{ ""`)
+		_, err = ParseDocument(`{ ""`)
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Expected Ident, found "".`),
 			Locations: []errors.Location{{1, 3}},
 		}, err)
 
-		_, err = Parse("query")
+		_, err = ParseDocument("query")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected "{", found "".`,
 			Locations: []errors.Location{{1, 6}},
@@ -66,12 +66,12 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses variable inline values", func(t *testing.T) {
-		_, err := Parse("{ field(complex: { a: { b: [ $var ] } }) }")
+		_, err := ParseDocument("{ field(complex: { a: { b: [ $var ] } }) }")
 		assert.Equal(t, NilGraphQLError, err)
 	})
 
 	t.Run("parses constant default values", func(t *testing.T) {
-		_, err := Parse("query Foo($x: Complex = { a: { b: [ $var ] } }) { field }")
+		_, err := ParseDocument("query Foo($x: Complex = { a: { b: [ $var ] } }) { field }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Unexpected %q.`, `"$"`),
 			Locations: []errors.Location{{1, 37}},
@@ -79,12 +79,12 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses variable definition directives", func(t *testing.T) {
-		_, err := Parse("query Foo($x: Boolean = false @bar) { field }")
+		_, err := ParseDocument("query Foo($x: Boolean = false @bar) { field }")
 		assert.Equal(t, NilGraphQLError, err)
 	})
 
 	t.Run(`does not accept fragments named "on"`, func(t *testing.T) {
-		_, err := Parse("fragment on on on { on }")
+		_, err := ParseDocument("fragment on on on { on }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Unexpected Name "on".`),
 			Locations: []errors.Location{{1, 10}},
@@ -92,7 +92,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run(`oes not accept fragments spread of "on"`, func(t *testing.T) {
-		_, err := Parse("{ ...on }")
+		_, err := ParseDocument("{ ...on }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Expected Ident, found "}".`),
 			Locations: []errors.Location{{1, 9}},
@@ -100,7 +100,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run(`parses multi-byte characters`, func(t *testing.T) {
-		doc, err := Parse(`
+		doc, err := ParseDocument(`
       # This comment has a \u0A0A multi-byte character.
       { field(arg: "Has a \u0A0A multi-byte character.") }
     `)
@@ -110,7 +110,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses kitchen sink", func(t *testing.T) {
-		_, err := Parse(string(resource.KitchenSinkQuery))
+		_, err := ParseDocument(string(resource.KitchenSinkQuery))
 		assert.Equal(t, NilGraphQLError, err)
 	})
 
@@ -131,13 +131,13 @@ func TestParser(t *testing.T) {
             @%s(%s: %s)
         }
       `, keyword, fragmentName, keyword, fragmentName, keyword, keyword, keyword, keyword, keyword, keyword)
-			_, err := Parse(document)
+			_, err := ParseDocument(document)
 			assert.Equal(t, NilGraphQLError, err)
 		}
 	})
 
 	t.Run("parses anonymous mutation operations", func(t *testing.T) {
-		_, err := Parse(`
+		_, err := ParseDocument(`
       mutation {
         mutationField
       }
@@ -146,7 +146,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses anonymous subscription operations", func(t *testing.T) {
-		_, err := Parse(`
+		_, err := ParseDocument(`
       subscription {
         subscriptionField
       }
@@ -155,7 +155,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses named mutation operations", func(t *testing.T) {
-		_, err := Parse(`
+		_, err := ParseDocument(`
       mutation Foo {
         mutationField
       }
@@ -164,7 +164,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses named subscription operations", func(t *testing.T) {
-		_, err := Parse(`
+		_, err := ParseDocument(`
       subscription Foo {
         subscriptionField
       }
@@ -173,7 +173,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("creates ast", func(t *testing.T) {
-		doc, err := Parse(`
+		doc, err := ParseDocument(`
       {
         node(id: 4) {
           id,
@@ -266,7 +266,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("creates ast from nameless query without variables", func(t *testing.T) {
-		doc, err := Parse(`
+		doc, err := ParseDocument(`
       query {
         node {
           id
