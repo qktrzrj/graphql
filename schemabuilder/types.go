@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/unrotten/graphql/builder/ast"
+	"math"
 	"reflect"
 	"time"
 )
@@ -65,6 +66,7 @@ type Interface struct {
 	Name          string
 	Desc          string
 	Type          interface{}
+	Fn            interface{}
 	PossibleTypes map[string]*Object
 	FieldResolve  map[string]*fieldResolve
 }
@@ -226,7 +228,7 @@ var Boolean = &Scalar{
 				return nil, errors.New("not a bool")
 			}
 		}
-		return reflect.ValueOf(asBool).Convert(reflect.TypeOf(bool(false))), nil
+		return asBool, nil
 	},
 }
 
@@ -244,7 +246,10 @@ var Int = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(int(0))), nil
+		if val > math.MaxInt32 && val < math.MinInt32 {
+			return nil, errors.New("value not int32")
+		}
+		return int(val), nil
 	},
 }
 
@@ -262,7 +267,10 @@ var Int8 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(int8(0))), nil
+		if val > math.MaxInt8 && val < math.MinInt8 {
+			return nil, errors.New("value not int8")
+		}
+		return int8(val), nil
 	},
 }
 
@@ -280,7 +288,10 @@ var Int16 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(int16(0))), nil
+		if val > math.MaxInt16 && val < math.MinInt16 {
+			return nil, errors.New("value not int16")
+		}
+		return int16(val), nil
 	},
 }
 
@@ -298,7 +309,10 @@ var Int32 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(int32(0))), nil
+		if val > math.MaxInt32 && val < math.MinInt32 {
+			return nil, errors.New("value not int32")
+		}
+		return int32(val), nil
 	},
 }
 
@@ -316,7 +330,10 @@ var Int64 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(int64(0))), nil
+		if val > math.MaxInt64 && val < math.MinInt64 {
+			return nil, errors.New("value not int8")
+		}
+		return int64(val), nil
 	},
 }
 
@@ -334,7 +351,10 @@ var Uint = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint(0))), nil
+		if val > math.MaxUint32 && val < 0 {
+			return nil, errors.New("value not uint32")
+		}
+		return uint(val), nil
 	},
 }
 
@@ -352,7 +372,10 @@ var Uint8 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint(8))), nil
+		if val > math.MaxUint8 && val < 0 {
+			return nil, errors.New("value not uint8")
+		}
+		return uint8(val), nil
 	},
 }
 
@@ -370,7 +393,10 @@ var Uint16 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint16(0))), nil
+		if val > math.MaxUint16 && val < 0 {
+			return nil, errors.New("value not uint16")
+		}
+		return uint16(val), nil
 	},
 }
 
@@ -388,7 +414,10 @@ var Uint32 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint32(0))), nil
+		if val > math.MaxUint32 && val < 0 {
+			return nil, errors.New("value not uint32")
+		}
+		return uint(val), nil
 	},
 }
 
@@ -406,7 +435,10 @@ var Uint64 = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(uint64(0))), nil
+		if val > math.MaxUint64 && val < 0 {
+			return nil, errors.New("value not uint64")
+		}
+		return uint64(val), nil
 	},
 }
 
@@ -424,7 +456,10 @@ var Float = &Scalar{
 				return nil, errors.New("not a number")
 			}
 		}
-		return reflect.ValueOf(val).Convert(reflect.TypeOf(float32(0))), nil
+		if val > math.MaxFloat32 {
+			return nil, errors.New("value not float32")
+		}
+		return float32(val), nil
 	},
 }
 

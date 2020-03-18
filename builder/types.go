@@ -64,6 +64,7 @@ type Interface struct {
 	Desc          string             `json:"description"`
 	Fields        map[string]*Field  `json:"fields"`
 	PossibleTypes map[string]*Object `json:"-"`
+	TypeResolve   TypeResolve        `json:"-"`
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -270,4 +271,15 @@ func IsInputType(typ Type) bool {
 		return IsInputType(t.Type)
 	}
 	return false
+}
+
+func IsBasicType(typ Type) bool {
+	switch t := typ.(type) {
+	case *Scalar, *Enum, *Interface:
+		return true
+	case *List:
+		return IsBasicType(t.Type)
+	default:
+		return false
+	}
 }

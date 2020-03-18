@@ -281,9 +281,15 @@ func (s *Schema) Union(name string, union interface{}, desc string) {
 }
 
 // Interface registers a Interface as a GraphQL Interface in our Schema.
-func (s *Schema) Interface(name string, typ interface{}, desc string) *Interface {
+func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc string) *Interface {
 	if typ == nil {
 		panic("nil type passed to Interface")
+	}
+	if name == "" {
+		panic("must provide name")
+	}
+	if fn == nil {
+		panic("must provide function")
 	}
 	t := reflect.TypeOf(typ)
 	if t.Kind() == reflect.Ptr {
@@ -299,6 +305,7 @@ func (s *Schema) Interface(name string, typ interface{}, desc string) *Interface
 		Name:          name,
 		Desc:          desc,
 		Type:          typ,
+		Fn:            fn,
 		PossibleTypes: map[string]*Object{},
 	}
 	return s.interfaces[name]

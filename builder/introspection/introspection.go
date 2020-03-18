@@ -586,7 +586,7 @@ func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, []*err
 		return nil, []*errors.GraphQLError{errors.New(err2.Error())}
 	}
 
-	indent, err2 := json.MarshalIndent(value, "", "  ")
+	indent, err2 := json.Marshal(value)
 	if err2 != nil {
 		return nil, []*errors.GraphQLError{errors.New(err2.Error())}
 	}

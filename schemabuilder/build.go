@@ -47,14 +47,14 @@ func (sb *schemaBuilder) getType(nodeType reflect.Type) (builder.Type, error) {
 	// Support scalars and optional scalars. Scalars have precedence over structs to have eg. time.Time function as a scalar.
 	// Enum
 	if enum := sb.getEnum(nodeType); enum != nil {
-		sb.types[nodeType] = &builder.NonNull{Type: enum}
+		sb.types[nodeType] = enum
 		sb.types[reflect.PtrTo(nodeType)] = enum
 		return sb.types[nodeType], nil
 	}
 	if nodeType.Kind() == reflect.Ptr {
 		if enum := sb.getEnum(nodeType.Elem()); enum != nil {
 			sb.types[nodeType] = enum
-			sb.types[nodeType.Elem()] = &builder.NonNull{Type: enum}
+			sb.types[nodeType.Elem()] = enum
 			return enum, nil
 		}
 	}
@@ -153,7 +153,7 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*builder.Interface, err
 			Name: inter.Name,
 			Desc: inter.Desc,
 		}
-		sb.types[typ] = &builder.NonNull{Type: iface}
+		sb.types[typ] = iface
 		sb.types[reflect.PtrTo(typ)] = iface
 		fields := make(map[string]*builder.Field)
 		for name, resolve := range inter.FieldResolve {
@@ -163,6 +163,10 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*builder.Interface, err
 			}
 			f.Name = name
 			fields[name] = f
+		}
+		function, err := sb.getTypeFunction(inter.Fn, typ)
+		if err != nil {
+			return nil, err
 		}
 		possibleTypes := make(map[string]*builder.Object)
 		for name, object := range inter.PossibleTypes {
@@ -174,6 +178,7 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*builder.Interface, err
 		}
 		iface.Fields = fields
 		iface.PossibleTypes = possibleTypes
+		iface.TypeResolve = function
 		return iface, nil
 	}
 	return nil, nil
@@ -248,14 +253,16 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 				Type:         fieldTyp,
 				DefaultValue: defaultValue,
 			}
-			if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-				if _, ok := fieldTyp.Type.(*builder.Scalar); ok {
+			if builder.IsBasicType(fieldTyp) {
+				if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
 					fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
 				}
+				if nonnull {
+					fieldTyp = &builder.NonNull{Type: fieldTyp}
+				}
 			}
-			if nonnull {
-				inputObject.Fields[name].Type = &builder.NonNull{Type: fieldTyp}
-			}
+			inputObject.Fields[name].Type = fieldTyp
+
 		}
 		return nil
 	}
@@ -337,14 +344,16 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 					},
 					Desc: desc,
 				}
-				if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-					if _, ok := fieldTyp.Type.(*builder.Scalar); ok {
+				if builder.IsBasicType(fieldTyp) {
+					if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
 						fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
 					}
+					if nonnull {
+						fieldTyp = &builder.NonNull{Type: fieldTyp}
+					}
 				}
-				if nonnull {
-					object.Fields[name].Type = &builder.NonNull{Type: fieldTyp}
-				}
+				object.Fields[name].Type = fieldTyp
+
 			}
 		}
 		for _, iface := range obj.Interface {
@@ -459,6 +468,62 @@ func (sb *schemaBuilder) getField(fn interface{}, source reflect.Type) (*builder
 	return nil, fmt.Errorf("error field type")
 }
 
+func (sb *schemaBuilder) getTypeFunction(fn interface{}, source reflect.Type) (builder.TypeResolve, error) {
+	if fn == nil {
+		return nil, nil
+	}
+	fctx := funcContext{}
+	typ := reflect.TypeOf(fn)
+	if typ.NumIn() > 2 {
+		return nil, fmt.Errorf("interface field num in can not more than 2")
+	}
+	for i := 0; i < typ.NumIn(); i++ {
+		inTyp := typ.In(i)
+		switch inTyp {
+		case reflect.TypeOf(context.Background()):
+			fctx.hasContext = true
+		case source, reflect.New(source).Type():
+			fctx.hasSource = true
+		default:
+			return nil, fmt.Errorf("interface typeResolve func num in has error type")
+		}
+	}
+	if typ.NumOut() != 1 {
+		return nil, fmt.Errorf("interface field num out must be 1")
+	}
+
+	return func(ctx context.Context, value interface{}) *builder.Object {
+		var in []reflect.Value
+		if fctx.hasContext {
+			in = append(in, reflect.ValueOf(ctx))
+		}
+		if fctx.hasSource {
+			in = append(in, reflect.ValueOf(value))
+		}
+		values := reflect.ValueOf(fn).Call(in)
+		if len(values) > 0 {
+			resTyp := values[0].Type()
+			var res builder.Type
+			if values[0].Kind() == reflect.Interface {
+				if iface, _ := sb.getType(resTyp); iface == nil {
+					resTyp = values[0].Elem().Type()
+				}
+			}
+			if resTyp.Kind() != reflect.Ptr {
+				resTyp = reflect.PtrTo(resTyp)
+			}
+			res, err := sb.getType(resTyp)
+			if err != nil {
+				return nil
+			}
+			if obj, ok := res.(*builder.Object); ok {
+				return obj
+			}
+		}
+		return nil
+	}, nil
+}
+
 func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*builder.Argument, error) {
 	args := make(map[string]*builder.Argument)
 	if typ.Kind() != reflect.Struct {
@@ -492,11 +557,13 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*builder.Arg
 				itemNonnull = true
 			}
 		}
-		if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-			fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-		}
-		if nonnull {
-			fieldTyp = &builder.NonNull{Type: fieldTyp}
+		if builder.IsBasicType(fieldTyp) {
+			if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
+				fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
+			}
+			if nonnull {
+				fieldTyp = &builder.NonNull{Type: fieldTyp}
+			}
 		}
 		args[name] = &builder.Argument{
 			Name: name,

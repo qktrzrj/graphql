@@ -273,54 +273,51 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 		return nil, nil
 	}
 	fields := make(map[string]interface{})
-	//var possibleTypes []string
-	for typString, graphqlTyp := range typ.PossibleTypes {
-		inner := reflect.ValueOf(source)
-		if inner.Kind() == reflect.Ptr && inner.Elem().Kind() == reflect.Struct {
-			inner = inner.Elem()
-		}
-		//inner = *schemabuilder.GetField(inner, typString)
-		//if inner.IsNil() {
-		//	continue
-		//}
-		//possibleTypes = append(possibleTypes, graphqlTyp.String())
 
-		// modifiedSelectionSet selection set contains fragments on typString
-		modifiedSelectionSet := &builder.SelectionSet{
-			Selections: selectionSet.Selections,
-			Fragments:  []*builder.FragmentSpread{},
-		}
-		for _, f := range selectionSet.Fragments {
-			if f.Fragment.On == typString {
-				modifiedSelectionSet.Fragments = append(modifiedSelectionSet.Fragments, f)
-			}
-		}
+	object := typ.TypeResolve(ctx, source)
+	if object == nil {
+		return nil, fmt.Errorf("can not find the type for interface %s", typ.Name)
+	}
 
-		selections, err := Flatten(modifiedSelectionSet)
-		if err != nil {
-			return nil, err
+	typString, graphqlTyp := object.Name, typ.PossibleTypes[object.Name]
+
+	// modifiedSelectionSet selection set contains fragments on typString
+	modifiedSelectionSet := &builder.SelectionSet{
+		Selections: selectionSet.Selections,
+		Fragments:  []*builder.FragmentSpread{},
+	}
+	for _, f := range selectionSet.Fragments {
+		if f.Fragment.On == typString {
+			modifiedSelectionSet.Fragments = append(modifiedSelectionSet.Fragments, f)
 		}
-		// for every selection, resolve the value and store it in the output object
-		for _, selection := range selections {
-			if selection.Name == "__typename" {
-				fields[selection.Alias] = graphqlTyp.Name
-				continue
-			}
-			field, ok := graphqlTyp.Fields[selection.Name]
+	}
+
+	selections, err := Flatten(modifiedSelectionSet)
+	if err != nil {
+		return nil, err
+	}
+	// for every selection, resolve the value and store it in the output object
+	for _, selection := range selections {
+		if selection.Name == "__typename" {
+			fields[selection.Alias] = graphqlTyp.Name
+			continue
+		}
+		field, ok := typ.Fields[selection.Name]
+		if !ok {
+			field, ok = graphqlTyp.Fields[selection.Name]
 			if !ok {
 				continue
 			}
-			//value := reflect.ValueOf(source).Elem()
-			//value = *schemabuilder.GetField(value, typString)
-			resolved, err := e.resolveAndExecute(ctx, field, inner.Interface(), selection)
-			if err != nil {
-				if err == ErrNoUpdate {
-					return nil, err
-				}
+		}
+
+		resolved, err := e.resolveAndExecute(ctx, field, source, selection)
+		if err != nil {
+			if err == ErrNoUpdate {
 				return nil, err
 			}
-			fields[selection.Alias] = resolved
+			return nil, err
 		}
+		fields[selection.Alias] = resolved
 	}
 
 	return fields, nil

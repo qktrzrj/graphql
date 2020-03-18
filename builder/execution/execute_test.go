@@ -1,7 +1,7 @@
 package execution
 
 import (
-	"fmt"
+	"encoding/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
@@ -39,7 +39,17 @@ var Nil *errors.GraphQLError
 func TestExecutor_Execute(t *testing.T) {
 	t.Run("resolve runtime type for Interface", func(t *testing.T) {
 		build := schemabuilder.NewSchema()
-		PetType := build.Interface("Pet", new(Pet), nil, "")
+		PetType := build.Interface("Pet", new(Pet), func(source Pet) interface{} {
+			switch source := source.(type) {
+			case Dog:
+				return source
+			case Cat:
+				return source
+			default:
+				return nil
+			}
+
+		}, "")
 		PetType.FieldFunc("name", func(source Pet) string { return source.GetName() }, "")
 
 		DogType := build.Object("Dog", Dog{}, "")
@@ -70,6 +80,16 @@ func TestExecutor_Execute(t *testing.T) {
     `
 		result, err := Do(schema, Params{Query: source})
 		assert.NoError(t, err)
-		fmt.Println(result)
+		marshal, err := json.Marshal(result)
+		assert.NoError(t, err)
+		assert.JSONEq(t, `{
+	"pets": [{
+		"name": "Odie",
+		"woofs": true
+	}, {
+		"meows": false,
+		"name": "Garfield"
+	}]
+}`, string(marshal))
 	})
 }
