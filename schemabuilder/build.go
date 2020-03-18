@@ -501,10 +501,8 @@ func (sb *schemaBuilder) getTypeFunction(fn interface{}, source reflect.Type) (b
 		if len(values) > 0 {
 			resTyp := values[0].Type()
 			var res builder.Type
-			if values[0].Kind() == reflect.Interface {
-				if iface, _ := sb.getType(resTyp); iface == nil {
-					resTyp = values[0].Elem().Type()
-				}
+			if values[0].Kind() == reflect.Interface && !values[0].IsNil() {
+				resTyp = values[0].Elem().Type()
 			}
 			if resTyp.Kind() != reflect.Ptr {
 				resTyp = reflect.PtrTo(resTyp)
