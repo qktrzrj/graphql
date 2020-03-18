@@ -2,10 +2,11 @@ package execution
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/unrotten/graphql/builder"
 	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/builder/validation"
+	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
 	"reflect"
 	"runtime"
@@ -22,7 +23,42 @@ type computationOutput struct {
 	Selection *ast.Selection
 }
 
+type Params struct {
+	Query         string                 `json:"query"`
+	OperationName string                 `json:"operationName"`
+	Variables     map[string]interface{} `json:"variables"`
+	Context       context.Context        `json:"context"`
+}
+
 var ErrNoUpdate = errors.New("no update")
+
+func Do(schema *builder.Schema, param Params) (interface{}, error) {
+
+	doc, err := builder.Parse(param.Query)
+	if err != nil {
+		return nil, fmt.Errorf(err.Error())
+	}
+
+	errs := validation.Validate(schema, doc, param.Variables, 50)
+	if len(errs) > 0 {
+		return nil, fmt.Errorf("%v", errs)
+	}
+
+	selectionSet, err := ApplySelectionSet(doc, param.OperationName, param.Variables)
+	if err != nil {
+		return nil, fmt.Errorf(err.Error())
+	}
+	root := schema.Query
+	if param.OperationName == "mutation" {
+		root = schema.Mutation
+	}
+	executor := &Executor{}
+	ctx := param.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return executor.Execute(ctx, root, nil, selectionSet)
+}
 
 func (e *Executor) Execute(ctx context.Context, typ builder.Type, source interface{},
 	selectionSet *builder.SelectionSet) (interface{}, error) {
@@ -237,17 +273,17 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 		return nil, nil
 	}
 	fields := make(map[string]interface{})
-	var possibleTypes []string
+	//var possibleTypes []string
 	for typString, graphqlTyp := range typ.PossibleTypes {
 		inner := reflect.ValueOf(source)
 		if inner.Kind() == reflect.Ptr && inner.Elem().Kind() == reflect.Struct {
 			inner = inner.Elem()
 		}
-		inner = *schemabuilder.GetField(inner, typString)
-		if inner.IsNil() {
-			continue
-		}
-		possibleTypes = append(possibleTypes, graphqlTyp.String())
+		//inner = *schemabuilder.GetField(inner, typString)
+		//if inner.IsNil() {
+		//	continue
+		//}
+		//possibleTypes = append(possibleTypes, graphqlTyp.String())
 
 		// modifiedSelectionSet selection set contains fragments on typString
 		modifiedSelectionSet := &builder.SelectionSet{
@@ -274,9 +310,9 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 			if !ok {
 				continue
 			}
-			value := reflect.ValueOf(source).Elem()
-			value = *schemabuilder.GetField(value, typString)
-			resolved, err := e.resolveAndExecute(ctx, field, value.Interface(), selection)
+			//value := reflect.ValueOf(source).Elem()
+			//value = *schemabuilder.GetField(value, typString)
+			resolved, err := e.resolveAndExecute(ctx, field, inner.Interface(), selection)
 			if err != nil {
 				if err == ErrNoUpdate {
 					return nil, err

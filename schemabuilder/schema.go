@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/unrotten/graphql/builder"
+	"github.com/unrotten/graphql/builder/ast"
 	"reflect"
-	"regexp"
 	"strconv"
 )
 
@@ -29,6 +29,10 @@ func NewSchema() *Schema {
 		interfaces:   map[string]*Interface{},
 		unions:       map[string]*Union{},
 		scalars:      scalars,
+		directives: map[string]*Directive{
+			"include": IncludeDirective,
+			"skip":    SkipDirective,
+		},
 	}
 
 	return schema
@@ -106,7 +110,7 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 // We'll read the fields of the struct to determine it's basic "Fields" and
 // we'll return an Object struct that we can use to register custom
 // relationships and fields on the object.
-func (s *Schema) Object(name string, typ interface{}, desc string, options ...FieldFuncOption) *Object {
+func (s *Schema) Object(name string, typ interface{}, desc string) *Object {
 	objTyp := reflect.TypeOf(typ)
 	if name == "" {
 		name = objTyp.Name()
@@ -120,15 +124,12 @@ func (s *Schema) Object(name string, typ interface{}, desc string, options ...Fi
 		return object
 	}
 	object := &Object{
-		Name: name,
-		Type: typ,
-		Desc: desc,
-	}
-	for _, opt := range options {
-		handleFunc := opt()
-		if handleFunc != nil {
-			object.HandleChain = append(object.HandleChain, handleFunc)
-		}
+		Name:         name,
+		Desc:         desc,
+		Type:         typ,
+		FieldResolve: map[string]*fieldResolve{},
+		ArgDefault:   map[string]map[string]interface{}{},
+		Interface:    []*Interface{},
 	}
 	s.objects[name] = object
 	return object
@@ -232,15 +233,20 @@ func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...Unmarsh
 			return nil
 		}
 	}
+	parseValue := func(i interface{}) (interface{}, error) {
+		outVal := reflect.New(typ).Elem()
+		err := ufn[0](i, outVal)
+		return outVal.Interface(), err
+	}
 	scalar := &Scalar{
-		Name:      name,
-		Desc:      desc,
-		Type:      tp,
-		Serialize: Serialize,
-		ParseValue: func(i interface{}) (interface{}, error) {
-			outVal := reflect.New(typ).Elem()
-			err := ufn[0](i, outVal)
-			return outVal.Interface(), err
+		Name:       name,
+		Desc:       desc,
+		Type:       tp,
+		Serialize:  Serialize,
+		ParseValue: parseValue,
+		ParseLiteral: func(value ast.Value) error {
+			_, err := parseValue(value.GetValue())
+			return err
 		},
 	}
 	s.scalars[name] = scalar
@@ -275,7 +281,7 @@ func (s *Schema) Union(name string, union interface{}, desc string) {
 }
 
 // Interface registers a Interface as a GraphQL Interface in our Schema.
-func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc string) *Interface {
+func (s *Schema) Interface(name string, typ interface{}, desc string) *Interface {
 	if typ == nil {
 		panic("nil type passed to Interface")
 	}
@@ -293,13 +299,10 @@ func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc st
 		Name:          name,
 		Desc:          desc,
 		Type:          typ,
-		Fn:            fn,
 		PossibleTypes: map[string]*Object{},
 	}
 	return s.interfaces[name]
 }
-
-var NameRegExp = regexp.MustCompile("^[_a-zA-Z][_a-zA-Z0-9]*$")
 
 // defined directive for schema
 //
@@ -309,10 +312,6 @@ func (s *Schema) Directive(name string, locs []string, args interface{}, desc st
 	// Ensure directive is named
 	if name == "" {
 		panic("Directive must be named.")
-	}
-	// Ensure directive name is valid
-	if !NameRegExp.MatchString(name) {
-		panic(`Names must match /^[_a-zA-Z][_a-zA-Z0-9]*$/ but "%v" does not.`)
 	}
 	// Ensure locations are provided for directive
 	if len(locs) == 0 {
@@ -463,22 +462,24 @@ func (s *Schema) Build() (*builder.Schema, error) {
 		}
 	}
 	for name, dir := range s.directives {
-		if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
-			var args []*builder.Argument
-			for _, arg := range a {
-				if f, ok := dir.Fields[arg.Name]; ok {
-					arg.DefaultValue = f.DefaultValue
+		var args []*builder.Argument
+		if dir.Type != nil {
+			if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
+				for _, arg := range a {
+					if f, ok := dir.Fields[arg.Name]; ok {
+						arg.DefaultValue = f.DefaultValue
+					}
+					args = append(args, arg)
 				}
-				args = append(args, arg)
+			} else {
+				return nil, err
 			}
-			directives[name] = &builder.Directive{
-				Name: dir.Name,
-				Desc: dir.Desc,
-				Args: args,
-				Locs: dir.Locs,
-			}
-		} else {
-			return nil, err
+		}
+		directives[name] = &builder.Directive{
+			Name: dir.Name,
+			Desc: dir.Desc,
+			Args: args,
+			Locs: dir.Locs,
 		}
 	}
 	return &builder.Schema{

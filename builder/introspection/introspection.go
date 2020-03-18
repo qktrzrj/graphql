@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/unrotten/graphql/builder"
+	"github.com/unrotten/graphql/builder/execution"
 	"github.com/unrotten/graphql/builder/validation"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
@@ -566,7 +567,7 @@ func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, []*err
 	schema := schemaBuilderSchema.MustBuild()
 	AddIntrospectionToSchema(schema)
 
-	query, err := builder.ParseDocument(introspectionQuery)
+	query, err := builder.Parse(introspectionQuery)
 	if err != nil {
 		return nil, []*errors.GraphQLError{err}
 	}
@@ -575,8 +576,12 @@ func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, []*err
 		return nil, err
 	}
 
-	executor := builder.Executor{}
-	value, err2 := executor.Execute(context.Background(), schema.Query, nil, query)
+	selectionSet, err := execution.ApplySelectionSet(query, "QUERY", nil)
+	if err != nil {
+		return nil, []*errors.GraphQLError{err}
+	}
+	executor := execution.Executor{}
+	value, err2 := executor.Execute(context.Background(), schema.Query, nil, selectionSet)
 	if err2 != nil {
 		return nil, []*errors.GraphQLError{errors.New(err2.Error())}
 	}

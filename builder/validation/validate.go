@@ -66,6 +66,12 @@ func newContext(s *builder.Schema, doc *builder.Document, maxDepth int) *context
 }
 
 func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interface{}, maxDepth int) []*errors.GraphQLError {
+	if doc == nil {
+		return []*errors.GraphQLError{errors.New("Must provide document")}
+	}
+	if s == nil {
+		return []*errors.GraphQLError{errors.New("Must provide schema")}
+	}
 	ctx := newContext(s, doc, maxDepth)
 
 	opNames := make(nameSet)
@@ -76,7 +82,7 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 
 		// Check if max depth is exceeded, if it's set. If max depth is exceeded,
 		// don't continue to Validate the document and exit early.
-		if validateMaxDepth(opc, op.SelectionSet.Selections, 1) {
+		if validateMaxDepth(opc, op.SelectionSet, 1) {
 			return ctx.errs
 		}
 		if op.Name != nil && op.Name.Name != "" {
@@ -282,7 +288,7 @@ func validateSelection(c *opContext, sel ast.Selection, t builder.NamedType) {
 			if sf && (sel.SelectionSet == nil || sel.SelectionSet.Selections == nil) {
 				c.addErr(sel.Alias.Loc, "ScalarLeafs", "Field %q of type %q must have a selection of subfields. Did you mean \"%s { ... }\"?", fieldName, ft, fieldName)
 			}
-			if !sf && (sel.SelectionSet == nil || sel.SelectionSet.Selections == nil) {
+			if !sf && (sel.SelectionSet != nil && sel.SelectionSet.Selections != nil) {
 				c.addErr(sel.Loc, "ScalarLeafs", "Field %q must not have a selection since type %q has no subfields.", fieldName, ft)
 			}
 		}
@@ -510,7 +516,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 	switch vtyp := vtyp.(type) {
 	case *builder.NonNull:
 		if val == nil {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value null.\nExpected type \"%s\", found null.", v.Var.Name, vtyp)
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value null.\nExpected type \"%s\", found null.", v.Var.Name.Name, vtyp)
 			return
 		}
 		validateValue(ctx, v, val, vtyp.Type)
@@ -531,7 +537,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 		}
 		e, ok := val.(string)
 		if !ok {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %v.", v.Var.Name, val, vtyp, val)
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %v.", v.Var.Name.Name, val, vtyp, val)
 			return
 		}
 		for _, option := range vtyp.Values {
@@ -539,14 +545,14 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 				return
 			}
 		}
-		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", v.Var.Name, e, vtyp, e)
+		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", v.Var.Name.Name, e, vtyp, e)
 	case *builder.InputObject:
 		if val == nil {
 			return
 		}
 		in, ok := val.(map[string]interface{})
 		if !ok {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %s.", v.Var.Name, val, vtyp, val)
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %s.", v.Var.Name.Name, val, vtyp, val)
 			return
 		}
 		for _, f := range vtyp.Fields {
@@ -558,15 +564,18 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 
 // validates the query doesn't go deeper than maxDepth (if set). Returns whether
 // or not query validated max depth to avoid excessive recursion.
-func validateMaxDepth(c *opContext, sels []ast.Selection, depth int) bool {
+func validateMaxDepth(c *opContext, sels *ast.SelectionSet, depth int) bool {
 	// maxDepth checking is turned off when maxDepth is 0
 	if c.maxDepth == 0 {
+		return false
+	}
+	if sels == nil {
 		return false
 	}
 
 	exceededMaxDepth := false
 
-	for _, sel := range sels {
+	for _, sel := range sels.Selections {
 		switch sel := sel.(type) {
 		case *ast.Field:
 			if depth > c.maxDepth {
@@ -574,11 +583,11 @@ func validateMaxDepth(c *opContext, sels []ast.Selection, depth int) bool {
 				c.addErr(sel.Alias.Loc, "MaxDepthExceeded", "Field %q has depth %d that exceeds max depth %d", sel.Name.Name, depth, c.maxDepth)
 				continue
 			}
-			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, sel.SelectionSet.Selections, depth+1)
+			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, sel.SelectionSet, depth+1)
 		case *ast.InlineFragment:
 			// Depth is not checked because inline fragments resolve to other fields which are checked.
 			// Depth is not incremented because inline fragments have the same depth as neighboring fields
-			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, sel.SelectionSet.Selections, depth)
+			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, sel.SelectionSet, depth+1)
 		case *ast.FragmentSpread:
 			// Depth is not checked because fragments resolve to other fields which are checked.
 			frag := c.fragments[sel.Name.Name]
@@ -588,7 +597,7 @@ func validateMaxDepth(c *opContext, sels []ast.Selection, depth int) bool {
 				continue
 			}
 			// Depth is not incremented because fragments have the same depth as surrounding fields
-			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, frag.SelectionSet.Selections, depth)
+			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, frag.SelectionSet, depth+1)
 		}
 	}
 
@@ -656,7 +665,7 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 
 	switch t := t.(type) {
 	case *builder.Scalar, *builder.Enum:
-		if validateBasicValue(v, t) {
+		if validateBasicValue(c, v, t) {
 			return true, ""
 		}
 	case *builder.List:
@@ -706,11 +715,11 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 	return false, fmt.Sprintf("Expected type %q, found %s.", t, v)
 }
 
-func validateBasicValue(v ast.Value, t builder.Type) bool {
+func validateBasicValue(ctx *opContext, v ast.Value, t builder.Type) bool {
 	switch t := t.(type) {
 	case *builder.Scalar:
 		switch t.Name {
-		case "Int":
+		case "Int", "Int32":
 			if v.GetKind() != kinds.IntValue {
 				return false
 			}
@@ -719,16 +728,97 @@ func validateBasicValue(v ast.Value, t builder.Type) bool {
 				panic(err)
 			}
 			return f >= math.MinInt32 && f <= math.MaxInt32
+		case "Int8":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= math.MinInt8 && f <= math.MaxInt8
+		case "Int16":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= math.MinInt16 && f <= math.MaxInt16
+		case "Int64":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= math.MinInt64 && f <= math.MaxInt64
+		case "Uint", "Uint32":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= 0 && f <= math.MaxUint32
+		case "Uint8":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= 0 && f <= math.MaxUint8
+		case "Uint16":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= 0 && f <= math.MaxInt16
+		case "Uint64":
+			if v.GetKind() != kinds.IntValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f >= 0 && f <= math.MaxUint64
 		case "Float":
-			return v.GetKind() == kinds.IntValue || v.GetKind() == kinds.FloatValue
-		case "String":
+			if v.GetKind() == kinds.IntValue || v.GetKind() == kinds.FloatValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f <= math.MaxFloat32
+		case "Float64":
+			if v.GetKind() == kinds.IntValue || v.GetKind() == kinds.FloatValue {
+				return false
+			}
+			f, err := strconv.ParseFloat(v.GetValue().(string), 64)
+			if err != nil {
+				panic(err)
+			}
+			return f <= math.MaxFloat64
+		case "String", "Map", "Time", "Bytes":
 			return v.GetKind() == kinds.StringValue
 		case "Boolean":
 			return v.GetKind() == kinds.BooleanValue && (v.GetValue() == "true" || v.GetValue() == "false")
 		case "ID":
 			return v.GetKind() == kinds.IntValue || v.GetKind() == kinds.StringValue
 		default:
-			//TODO: Type-check against expected type by Unmarshalling
+			if err := t.ParseLiteral(v); err != nil {
+				ctx.addErr(v.Location(), "ValuesOfCorrectType", `Expected value of type "%s", found "%s"; %v`, t.Name, v.GetValue(), err)
+			}
 			return true
 		}
 

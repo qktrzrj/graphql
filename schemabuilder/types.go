@@ -2,9 +2,11 @@ package schemabuilder
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unrotten/graphql/builder/ast"
 	"reflect"
 	"time"
 )
@@ -16,8 +18,8 @@ type Object struct {
 	Desc         string
 	Type         interface{}
 	FieldResolve map[string]*fieldResolve
+	ArgDefault   map[string]map[string]interface{}
 	Interface    []*Interface
-	HandleChain  []HandleFunc
 }
 
 // InputObject represents the input objects passed in queries,mutations and subscriptions
@@ -41,6 +43,13 @@ var NonNullField FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
 	return nil
 }
 
+var NonNullItem FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
+	if len(resolve) > 0 {
+		resolve[0].MarkedItemNonNull = true
+	}
+	return nil
+}
+
 // Enum is a representation of an enum that includes both the mapping and reverse mapping.
 type Enum struct {
 	Name       string
@@ -57,7 +66,6 @@ type Interface struct {
 	Desc          string
 	Type          interface{}
 	PossibleTypes map[string]*Object
-	Fn            interface{}
 	FieldResolve  map[string]*fieldResolve
 }
 
@@ -71,11 +79,12 @@ type Union struct {
 
 // Scalar is a representation of graphql scalar
 type Scalar struct {
-	Name       string
-	Desc       string
-	Type       interface{}
-	Serialize  func(interface{}) (interface{}, error)
-	ParseValue func(interface{}) (interface{}, error)
+	Name         string
+	Desc         string
+	Type         interface{}
+	Serialize    func(interface{}) (interface{}, error)
+	ParseValue   func(interface{}) (interface{}, error)
+	ParseLiteral func(value ast.Value) error
 }
 
 type Directive struct {
@@ -97,7 +106,7 @@ type Directive struct {
 //    })
 //
 // An addUser mutation field might take both a context and arguments:
-//    mutation.FieldDefault("addUser", func(ctx context.context, args struct{
+//    mutation.FieldFunc("addUser", func(ctx context.context, args struct{
 //        FirstName string
 //        LastName  string
 //    }) (int, error) {
@@ -121,6 +130,16 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 		panic("duplicate method")
 	}
 	s.FieldResolve[name] = resolve
+}
+
+func (s *Object) FieldArgsDefault(field, argName string, defaultValue interface{}) {
+	if s.ArgDefault[field] == nil {
+		s.ArgDefault[field] = map[string]interface{}{}
+	}
+	if _, ok := s.ArgDefault[field][argName]; ok {
+		panic("duplicate arg default " + argName)
+	}
+	s.ArgDefault[field][argName] = defaultValue
 }
 
 // FieldDefault is used to expose the fields of an input object
@@ -161,9 +180,6 @@ func (s *Object) InterfaceFunc(list ...*Interface) {
 
 // similar as object's func, but haven't middleware func , and given name must be same as interface's method
 func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
-	if getMethod(s.Type, name) == nil {
-		panic("Interface FieldDefault param name must be the name of interface's method")
-	}
 	if s.FieldResolve == nil {
 		s.FieldResolve = make(map[string]*fieldResolve)
 	}
@@ -176,8 +192,14 @@ func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
 	s.FieldResolve[name] = resolve
 }
 
+// use to valid type, if not set, will use parseValue
+func (s *Scalar) LiteralFunc(fn func(value ast.Value) error) {
+	s.ParseLiteral = fn
+}
+
 type fieldResolve struct {
 	MarkedNonNullable bool
+	MarkedItemNonNull bool
 	Fn                interface{}
 	Desc              string
 	HandleChain       []HandleFunc
@@ -469,28 +491,33 @@ var ID = &Scalar{
 }
 
 type MMap struct {
-	Value interface{}
+	Value string
+}
+
+func (m *MMap) MarshalJSON() ([]byte, error) {
+	v := base64.StdEncoding.EncodeToString([]byte(m.Value))
+	d, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return d, nil
 }
 
 var Map = &Scalar{
-	Name: "Map",
-	Desc: `map type, use as {"a":value}`,
-	Type: MMap{},
-	Serialize: func(value interface{}) (interface{}, error) {
-		mmap := value.(*MMap)
-		marshal, err := json.Marshal(mmap.Value)
-		if err != nil {
-			return nil, err
-		}
-		return string(marshal), nil
-	},
+	Name:      "Map",
+	Desc:      `map type, use as {"a":value}`,
+	Type:      MMap{},
+	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		vstr := value.(string)
-		mmap := &MMap{}
-		err := json.Unmarshal([]byte(vstr), &mmap.Value)
-		if err != nil {
-			return nil, err
+		v, ok := value.(string)
+		if !ok {
+			if value == nil {
+				v = ""
+			} else {
+				return nil, errors.New("not a string")
+			}
 		}
+		mmap := &MMap{Value: v}
 		return mmap, nil
 	},
 }
@@ -501,13 +528,11 @@ var Time = &Scalar{
 	Type:      time.Time{},
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		vstr := value.(string)
-		time := time.Time{}
-		err := json.Unmarshal([]byte(vstr), &time)
-		if err != nil {
-			return nil, err
+		v, ok := value.(string)
+		if !ok {
+			return nil, errors.New("invalid type expected string")
 		}
-		return time, nil
+		return time.Parse(time.RFC3339, v)
 	},
 }
 
@@ -516,11 +541,47 @@ var Bytes = &Scalar{
 	Desc: "byte slice type",
 	Type: []byte{},
 	Serialize: func(value interface{}) (interface{}, error) {
-		vby := value.([]byte)
-		return string(vby), nil
+		data, err := json.Marshal(value.([]byte))
+		if err != nil {
+			return nil, err
+		}
+		return data, nil
 	},
 	ParseValue: func(value interface{}) (interface{}, error) {
-		vstr := value.(string)
-		return []byte(vstr), nil
+		v, ok := value.(string)
+		if !ok {
+			return nil, errors.New("invalid type expected string")
+		}
+		return base64.StdEncoding.DecodeString(v)
+	},
+}
+
+type includeArg struct {
+	If bool `graphql:"if,nonnull,Included when true."`
+}
+
+type skipArg struct {
+	If bool `graphql:"if,nonnull,Skipped when true."`
+}
+
+var IncludeDirective = &Directive{
+	Name: "include",
+	Desc: "Directs the executor to include this field or fragment only when the `if` argument is true.",
+	Type: includeArg{},
+	Locs: []string{
+		"FIELD",
+		"FRAGMENT_SPREAD",
+		"INLINE_FRAGMENT",
+	},
+}
+
+var SkipDirective = &Directive{
+	Name: "skip",
+	Desc: "Directs the executor to skip this field or fragment when the `if` argument is true.",
+	Type: skipArg{},
+	Locs: []string{
+		"FIELD",
+		"FRAGMENT_SPREAD",
+		"INLINE_FRAGMENT",
 	},
 }

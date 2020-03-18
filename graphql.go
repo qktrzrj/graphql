@@ -35,6 +35,9 @@ func (s *Handler) Validate(queryString string) []*errors.GraphQLError {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "must be post", http.StatusBadRequest)
+	}
 	ctx := context
 	ctx.Writer, ctx.Request = w, r
 	h.ctx = ctx

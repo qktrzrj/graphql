@@ -39,10 +39,11 @@ var _ NamedType = (*Union)(nil)
 // The leaf values of any request and input values to arguments are Scalars (or Enums)
 // and are defined with a name and a series of serialization functions used to ensure validity.
 type Scalar struct {
-	Name       string                                 `json:"name"`
-	Desc       string                                 `json:"description"`
-	Serialize  func(interface{}) (interface{}, error) `json:"-"`
-	ParseValue func(interface{}) (interface{}, error) `json:"-"`
+	Name         string                                 `json:"name"`
+	Desc         string                                 `json:"description"`
+	Serialize    func(interface{}) (interface{}, error) `json:"-"`
+	ParseValue   func(interface{}) (interface{}, error) `json:"-"`
+	ParseLiteral func(value ast.Value) error            `json:"-"`
 }
 
 // Almost all of the GraphQL types you define will be object types.
@@ -61,7 +62,6 @@ type Object struct {
 type Interface struct {
 	Name          string             `json:"name"`
 	Desc          string             `json:"description"`
-	Resolve       TypeResolve        `json:"-"`
 	Fields        map[string]*Field  `json:"fields"`
 	PossibleTypes map[string]*Object `json:"-"`
 }
@@ -144,7 +144,7 @@ func (t *Union) Description() string       { return t.Desc }
 func (t *Enum) Description() string        { return t.Desc }
 func (t *InputObject) Description() string { return t.Desc }
 
-type TypeResolve func(ctx context.Context, value interface{}) (interface{}, error)
+type TypeResolve func(ctx context.Context, value interface{}) *Object
 
 type FieldResolve func(ctx context.Context, source, args interface{}) (interface{}, error)
 
