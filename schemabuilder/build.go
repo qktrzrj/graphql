@@ -38,34 +38,31 @@ func (sb *schemaBuilder) getType(nodeType reflect.Type) (builder.Type, error) {
 	if typ, ok := sb.types[nodeType]; ok {
 		return typ, nil
 	}
-	if nodeType.Kind() == reflect.Ptr {
-		if typ, ok := sb.types[nodeType.Elem()]; ok {
-			return typ, nil
-		}
-	}
 
 	// Support scalars and optional scalars. Scalars have precedence over structs to have eg. time.Time function as a scalar.
 	// Enum
 	if enum := sb.getEnum(nodeType); enum != nil {
-		sb.types[nodeType] = enum
+		sb.types[nodeType] = &builder.NonNull{Type: enum}
 		sb.types[reflect.PtrTo(nodeType)] = enum
 		return sb.types[nodeType], nil
 	}
 	if nodeType.Kind() == reflect.Ptr {
 		if enum := sb.getEnum(nodeType.Elem()); enum != nil {
 			sb.types[nodeType] = enum
-			sb.types[nodeType.Elem()] = enum
+			sb.types[nodeType.Elem()] = &builder.NonNull{Type: enum}
 			return enum, nil
 		}
 	}
 	// Scalar
 	if scalar := sb.getScalar(nodeType); scalar != nil {
-		sb.types[nodeType] = scalar
+		sb.types[nodeType] = &builder.NonNull{Type: scalar}
+		sb.types[reflect.PtrTo(nodeType)] = scalar
 		return scalar, nil
 	}
 	if nodeType.Kind() == reflect.Ptr {
 		if scalar := sb.getScalar(nodeType.Elem()); scalar != nil {
 			sb.types[nodeType] = scalar
+			sb.types[nodeType.Elem()] = &builder.NonNull{Type: scalar}
 			return scalar, nil // XXX: prefix typ with "*"
 		}
 	}
@@ -153,7 +150,7 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*builder.Interface, err
 			Name: inter.Name,
 			Desc: inter.Desc,
 		}
-		sb.types[typ] = iface
+		sb.types[typ] = &builder.NonNull{Type: iface}
 		sb.types[reflect.PtrTo(typ)] = iface
 		fields := make(map[string]*builder.Field)
 		for name, resolve := range inter.FieldResolve {
@@ -223,19 +220,19 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
 			name := field.Name
-			var nonnull bool
-			var itemNonnull bool
+			//var nonnull bool
+			//var itemNonnull bool
 			if tag := field.Tag.Get("graphql"); tag == "-" {
 				continue
 			} else if tag != "" {
 				split := strings.Split(tag, ",")
 				name = split[0]
-				if len(split) > 1 && split[1] == "nonnull" {
-					nonnull = true
-				}
-				if len(split) > 3 && split[3] == "itemNonnull" {
-					itemNonnull = true
-				}
+				//if len(split) > 1 && split[1] == "nonnull" {
+				//	nonnull = true
+				//}
+				//if len(split) > 3 && split[3] == "itemNonnull" {
+				//	itemNonnull = true
+				//}
 			}
 			var defaultValue interface{}
 			if f, ok := input.Fields[name]; ok {
@@ -253,14 +250,14 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 				Type:         fieldTyp,
 				DefaultValue: defaultValue,
 			}
-			if builder.IsBasicType(fieldTyp) {
-				if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-					fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-				}
-				if nonnull {
-					fieldTyp = &builder.NonNull{Type: fieldTyp}
-				}
-			}
+			//if builder.IsBasicType(fieldTyp) {
+			//	if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
+			//		fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
+			//	}
+			//	if nonnull {
+			//		fieldTyp = &builder.NonNull{Type: fieldTyp}
+			//	}
+			//}
 			inputObject.Fields[name].Type = fieldTyp
 
 		}
@@ -293,23 +290,23 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
 			name := field.Name
-			var nonnull bool
-			var itemNonnull bool
+			//var nonnull bool
+			//var itemNonnull bool
 			var desc string
 			if tag := field.Tag.Get("graphql"); tag == "-" {
 				continue
 			} else if tag != "" {
 				split := strings.Split(tag, ",")
 				name = split[0]
-				if len(split) > 1 && split[1] == "nonnull" {
-					nonnull = true
+				//if len(split) > 1 && split[1] == "nonnull" {
+				//	nonnull = true
+				//}
+				if len(split) > 1 {
+					desc = split[1]
 				}
-				if len(split) > 2 {
-					desc = split[2]
-				}
-				if len(split) > 3 && split[3] == "itemNonnull" {
-					itemNonnull = true
-				}
+				//if len(split) > 3 && split[3] == "itemNonnull" {
+				//	itemNonnull = true
+				//}
 			}
 			if _, ok := obj.FieldResolve[name]; ok {
 				continue
@@ -344,14 +341,14 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 					},
 					Desc: desc,
 				}
-				if builder.IsBasicType(fieldTyp) {
-					if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-						fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-					}
-					if nonnull {
-						fieldTyp = &builder.NonNull{Type: fieldTyp}
-					}
-				}
+				//if builder.IsBasicType(fieldTyp) {
+				//	if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
+				//		fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
+				//	}
+				//	if nonnull {
+				//		fieldTyp = &builder.NonNull{Type: fieldTyp}
+				//	}
+				//}
 				object.Fields[name].Type = fieldTyp
 
 			}
@@ -539,32 +536,32 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*builder.Arg
 			return nil, fmt.Errorf("object field type can not be interface,union and object")
 		}
 		name := field.Name
-		var nonnull bool
+		//var nonnull bool
 		var desc string
-		var itemNonnull bool
+		//var itemNonnull bool
 		if tag := field.Tag.Get("graphql"); tag == "-" {
 			continue
 		} else if tag != "" {
 			split := strings.Split(tag, ",")
 			name = split[0]
-			if len(split) > 1 && split[1] == "nonnull" {
-				nonnull = true
+			//if len(split) > 1 && split[1] == "nonnull" {
+			//	nonnull = true
+			//}
+			if len(split) > 1 {
+				desc = split[1]
 			}
-			if len(split) > 2 {
-				desc = split[2]
-			}
-			if len(split) > 3 && split[3] == "itemNonnull" {
-				itemNonnull = true
-			}
+			//if len(split) > 3 && split[3] == "itemNonnull" {
+			//	itemNonnull = true
+			//}
 		}
-		if builder.IsBasicType(fieldTyp) {
-			if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-				fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-			}
-			if nonnull {
-				fieldTyp = &builder.NonNull{Type: fieldTyp}
-			}
-		}
+		//if builder.IsBasicType(fieldTyp) {
+		//	if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
+		//		fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
+		//	}
+		//	if nonnull {
+		//		fieldTyp = &builder.NonNull{Type: fieldTyp}
+		//	}
+		//}
 		args[name] = &builder.Argument{
 			Name: name,
 			Type: fieldTyp,
