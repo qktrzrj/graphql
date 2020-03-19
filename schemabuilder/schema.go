@@ -288,9 +288,6 @@ func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc st
 	if name == "" {
 		panic("must provide name")
 	}
-	if fn == nil {
-		panic("must provide function")
-	}
 	t := reflect.TypeOf(typ)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -366,6 +363,9 @@ func (s *Schema) Subscription() *Object {
 // We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
 func (s *Schema) Build() (*builder.Schema, error) {
+	s.Query()
+	s.Mutation()
+	s.Subscription()
 	sb := &schemaBuilder{
 		types:        make(map[reflect.Type]builder.Type),
 		objects:      make(map[reflect.Type]*Object, len(s.objects)),
@@ -449,7 +449,6 @@ func (s *Schema) Build() (*builder.Schema, error) {
 		}
 		sb.unions[typ] = union
 	}
-
 	queryTyp, err := sb.getType(reflect.TypeOf(&query{}))
 	if err != nil {
 		return nil, err
@@ -471,7 +470,7 @@ func (s *Schema) Build() (*builder.Schema, error) {
 	for name, dir := range s.directives {
 		var args []*builder.Argument
 		if dir.Type != nil {
-			if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
+			if _, a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
 				for _, arg := range a {
 					if f, ok := dir.Fields[arg.Name]; ok {
 						arg.DefaultValue = f.DefaultValue
@@ -494,6 +493,7 @@ func (s *Schema) Build() (*builder.Schema, error) {
 		Query:        queryTyp,
 		Mutation:     mutationTyp,
 		Subscription: subscriptionTyp,
+		Directives:   directives,
 	}, nil
 }
 

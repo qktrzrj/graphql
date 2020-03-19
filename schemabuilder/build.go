@@ -3,9 +3,10 @@ package schemabuilder
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
+	strbuilder "github.com/unrotten/builder"
 	"github.com/unrotten/graphql/builder"
+	"go/ast"
 	"reflect"
 	"strings"
 )
@@ -14,13 +15,14 @@ import (
 // we build out graphql types for our graphql schema.  Resolved graphQL "types"
 // are stored in the type map which we can use to see sections of the graph.
 type schemaBuilder struct {
-	types        map[reflect.Type]builder.Type
-	objects      map[reflect.Type]*Object
-	enums        map[reflect.Type]*Enum
-	inputObjects map[reflect.Type]*InputObject
-	interfaces   map[reflect.Type]*Interface
-	scalars      map[reflect.Type]*Scalar
-	unions       map[reflect.Type]*Union
+	types           map[reflect.Type]builder.Type
+	inputObjResolve map[string]func(arg interface{}) (interface{}, error)
+	objects         map[reflect.Type]*Object
+	enums           map[reflect.Type]*Enum
+	inputObjects    map[reflect.Type]*InputObject
+	interfaces      map[reflect.Type]*Interface
+	scalars         map[reflect.Type]*Scalar
+	unions          map[reflect.Type]*Union
 }
 
 var Serialize = func(i interface{}) (interface{}, error) {
@@ -50,20 +52,20 @@ func (sb *schemaBuilder) getType(nodeType reflect.Type) (builder.Type, error) {
 		if enum := sb.getEnum(nodeType.Elem()); enum != nil {
 			sb.types[nodeType] = enum
 			sb.types[nodeType.Elem()] = &builder.NonNull{Type: enum}
-			return enum, nil
+			return sb.types[nodeType], nil
 		}
 	}
 	// Scalar
 	if scalar := sb.getScalar(nodeType); scalar != nil {
 		sb.types[nodeType] = &builder.NonNull{Type: scalar}
 		sb.types[reflect.PtrTo(nodeType)] = scalar
-		return scalar, nil
+		return sb.types[nodeType], nil
 	}
 	if nodeType.Kind() == reflect.Ptr {
 		if scalar := sb.getScalar(nodeType.Elem()); scalar != nil {
 			sb.types[nodeType] = scalar
 			sb.types[nodeType.Elem()] = &builder.NonNull{Type: scalar}
-			return scalar, nil // XXX: prefix typ with "*"
+			return sb.types[nodeType], nil // XXX: prefix typ with "*"
 		}
 	}
 	// Interface
@@ -76,7 +78,7 @@ func (sb *schemaBuilder) getType(nodeType reflect.Type) (builder.Type, error) {
 	}
 	if nodeType.Kind() == reflect.Ptr && nodeType.Elem().Kind() == reflect.Interface {
 		if inter, err := sb.getInterface(nodeType.Elem()); inter != nil {
-			return inter, nil
+			return sb.types[nodeType], nil
 		} else if err != nil {
 			return nil, err
 		}
@@ -96,17 +98,25 @@ func (sb *schemaBuilder) getType(nodeType reflect.Type) (builder.Type, error) {
 		return sb.types[nodeType], nil
 	}
 
-	switch nodeType.Kind() {
-	case reflect.Slice, reflect.Array:
+	if nodeType.Kind() == reflect.Slice {
 		elementType, err := sb.getType(nodeType.Elem())
 		if err != nil {
 			return nil, err
 		}
-		return &builder.List{Type: elementType}, nil
-
-	default:
-		return nil, fmt.Errorf("bad type %s: should be a scalar, slice, or struct type", nodeType)
+		sb.types[nodeType] = &builder.NonNull{Type: &builder.List{Type: elementType}}
+		sb.types[reflect.PtrTo(nodeType)] = &builder.List{Type: elementType}
+		return sb.types[nodeType], nil
 	}
+	if nodeType.Kind() == reflect.Ptr && nodeType.Elem().Kind() == reflect.Slice {
+		elementType, err := sb.getType(nodeType.Elem())
+		if err != nil {
+			return nil, err
+		}
+		sb.types[nodeType.Elem()] = &builder.NonNull{Type: &builder.List{Type: elementType}}
+		sb.types[nodeType] = &builder.List{Type: elementType}
+		return sb.types[nodeType], nil
+	}
+	return nil, fmt.Errorf("bad type %s: should be a scalar, slice, or struct type", nodeType)
 }
 
 // getEnum gets the Enum type information for the passed in reflect.Operation by looking it up in our enum mappings.
@@ -122,7 +132,8 @@ func (sb *schemaBuilder) getEnum(typ reflect.Type) *builder.Enum {
 			Name:       enum.Name,
 			Values:     values,
 			ValuesDesc: descs,
-			ReverseMap: enum.ReverseMap,
+			ReverseMap: enum.Map,
+			Map:        enum.ReverseMap,
 			Desc:       enum.Desc,
 		}
 	}
@@ -161,10 +172,15 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*builder.Interface, err
 			f.Name = name
 			fields[name] = f
 		}
-		function, err := sb.getTypeFunction(inter.Fn, typ)
-		if err != nil {
-			return nil, err
+		var function builder.TypeResolve
+		if inter.Fn != nil {
+			var err error
+			function, err = sb.getTypeFunction(inter.Fn, typ)
+			if err != nil {
+				return nil, err
+			}
 		}
+
 		possibleTypes := make(map[string]*builder.Object)
 		for name, object := range inter.PossibleTypes {
 			t, err := sb.getType(reflect.TypeOf(object.Type))
@@ -183,85 +199,12 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*builder.Interface, err
 
 func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 	// Union
-	if union, ok := sb.unions[typ]; ok {
-		unionTyp := &builder.Union{
-			Name:  union.Name,
-			Desc:  union.Desc,
-			Types: make(map[string]*builder.Object, typ.NumField()),
-		}
-		sb.types[reflect.PtrTo(typ)] = unionTyp
-		sb.types[typ] = &builder.NonNull{Type: unionTyp}
-
-		for i := 0; i < typ.NumField(); i++ {
-			field := typ.Field(i)
-			if field.Type.Kind() != reflect.Ptr && field.Type.Elem().Kind() != reflect.Struct {
-				return fmt.Errorf("%s %s %s: union's field must be struct's prt", field.PkgPath, typ.String(), field.Name)
-			}
-			if _, ok := sb.objects[field.Type.Elem()]; !ok {
-				return fmt.Errorf("%s %s %s: union's field type must be object", field.PkgPath, typ.String(), field.Name)
-			}
-			object, err := sb.getType(field.Type)
-			if err != nil {
-				return err
-			}
-			unionTyp.Types[object.(*builder.Object).Name] = object.(*builder.Object)
-		}
-		return nil
+	if _, ok := sb.unions[typ]; ok {
+		return sb.buildUnion(typ)
 	}
 	// Input Object
-	if input, ok := sb.inputObjects[typ]; ok {
-		inputObject := &builder.InputObject{
-			Name:   input.Name,
-			Fields: map[string]*builder.InputField{},
-			Desc:   input.Desc,
-		}
-		sb.types[reflect.PtrTo(typ)] = inputObject
-		sb.types[typ] = &builder.NonNull{Type: inputObject}
-		for i := 0; i < typ.NumField(); i++ {
-			field := typ.Field(i)
-			name := field.Name
-			//var nonnull bool
-			//var itemNonnull bool
-			if tag := field.Tag.Get("graphql"); tag == "-" {
-				continue
-			} else if tag != "" {
-				split := strings.Split(tag, ",")
-				name = split[0]
-				//if len(split) > 1 && split[1] == "nonnull" {
-				//	nonnull = true
-				//}
-				//if len(split) > 3 && split[3] == "itemNonnull" {
-				//	itemNonnull = true
-				//}
-			}
-			var defaultValue interface{}
-			if f, ok := input.Fields[name]; ok {
-				defaultValue = f.DefaultValue
-			}
-			fieldTyp, err := sb.getType(field.Type)
-			if err != nil {
-				return err
-			}
-			if !builder.IsInputType(fieldTyp) {
-				return fmt.Errorf("inputObject field type must be inputType")
-			}
-			inputObject.Fields[name] = &builder.InputField{
-				Name:         name,
-				Type:         fieldTyp,
-				DefaultValue: defaultValue,
-			}
-			//if builder.IsBasicType(fieldTyp) {
-			//	if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-			//		fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-			//	}
-			//	if nonnull {
-			//		fieldTyp = &builder.NonNull{Type: fieldTyp}
-			//	}
-			//}
-			inputObject.Fields[name].Type = fieldTyp
-
-		}
-		return nil
+	if _, ok := sb.inputObjects[typ]; ok {
+		return sb.builInputObject(typ)
 	}
 	// Object
 	if obj, ok := sb.objects[typ]; ok {
@@ -270,6 +213,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			Desc:       obj.Desc,
 			Interfaces: map[string]*builder.Interface{},
 			Fields:     map[string]*builder.Field{},
+			IsTypeOf:   reflect.New(typ).Interface(),
 		}
 
 		sb.types[reflect.PtrTo(typ)] = object
@@ -290,23 +234,15 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
 			name := field.Name
-			//var nonnull bool
-			//var itemNonnull bool
 			var desc string
 			if tag := field.Tag.Get("graphql"); tag == "-" {
 				continue
 			} else if tag != "" {
 				split := strings.Split(tag, ",")
 				name = split[0]
-				//if len(split) > 1 && split[1] == "nonnull" {
-				//	nonnull = true
-				//}
 				if len(split) > 1 {
 					desc = split[1]
 				}
-				//if len(split) > 3 && split[3] == "itemNonnull" {
-				//	itemNonnull = true
-				//}
 			}
 			if _, ok := obj.FieldResolve[name]; ok {
 				continue
@@ -324,31 +260,17 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 					Args: map[string]*builder.Argument{},
 					Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
 						value := reflect.ValueOf(source)
-						sourceTyp := reflect.TypeOf(source)
-						for i := 0; i < value.NumField(); i++ {
-							structField := sourceTyp.Field(i)
-							tag := structField.Tag.Get("graphql")
-							if tag == "-" {
-								continue
-							}
-							if tag != "" && strings.Split(tag, ",")[0] == name {
-								return value.Field(i).Interface(), nil
-							} else if structField.Name == name {
-								return value.Field(i).Interface(), nil
-							}
+						if value.Kind() == reflect.Ptr {
+							value = value.Elem()
 						}
-						return nil, nil
+						fieldVal := GetField(value, name)
+						if fieldVal == nil {
+							return nil, fmt.Errorf("can not get field %s", name)
+						}
+						return (*fieldVal).Interface(), nil
 					},
 					Desc: desc,
 				}
-				//if builder.IsBasicType(fieldTyp) {
-				//	if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-				//		fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-				//	}
-				//	if nonnull {
-				//		fieldTyp = &builder.NonNull{Type: fieldTyp}
-				//	}
-				//}
 				object.Fields[name].Type = fieldTyp
 
 			}
@@ -365,104 +287,133 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 	return fmt.Errorf("unknown type: %s", typ.String())
 }
 
-func (sb *schemaBuilder) getField(fn interface{}, source reflect.Type) (*builder.Field, error) {
-	if resolve, ok := fn.(*fieldResolve); ok {
-		field, err := sb.getField(resolve.Fn, source)
+func (sb *schemaBuilder) buildUnion(typ reflect.Type) error {
+	union := sb.unions[typ]
+	unionTyp := &builder.Union{
+		Name:  union.Name,
+		Desc:  union.Desc,
+		Types: make(map[string]*builder.Object, typ.NumField()),
+	}
+	sb.types[reflect.PtrTo(typ)] = unionTyp
+	sb.types[typ] = &builder.NonNull{Type: unionTyp}
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.Type.Kind() != reflect.Ptr && field.Type.Elem().Kind() != reflect.Struct {
+			return fmt.Errorf("%s %s %s: union's field must be struct's prt", field.PkgPath, typ.String(), field.Name)
+		}
+		if _, ok := sb.objects[field.Type.Elem()]; !ok {
+			return fmt.Errorf("%s %s %s: union's field type must be object", field.PkgPath, typ.String(), field.Name)
+		}
+		object, err := sb.getType(field.Type)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		if listTyp, ok := field.Type.(*builder.List); ok && resolve.MarkedItemNonNull {
-			if _, ok := listTyp.Type.(*builder.Scalar); ok {
-				listTyp.Type = &builder.NonNull{Type: listTyp.Type}
-				field.Type = listTyp
-			}
+		unionTyp.Types[object.(*builder.Object).Name] = object.(*builder.Object)
+	}
+	return nil
+}
+
+func (sb *schemaBuilder) builInputObject(typ reflect.Type) error {
+	input := sb.inputObjects[typ]
+	inputObject := &builder.InputObject{
+		Name:   input.Name,
+		Fields: map[string]*builder.InputField{},
+		Desc:   input.Desc,
+	}
+	sb.types[reflect.PtrTo(typ)] = inputObject
+	sb.types[typ] = &builder.NonNull{Type: inputObject}
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		name := field.Name
+		if !ast.IsExported(name) {
+			return fmt.Errorf("input object field must be exported")
 		}
-		if resolve.MarkedNonNullable {
-			field.Type = &builder.NonNull{Type: field.Type}
+		if tag := field.Tag.Get("graphql"); tag == "-" {
+			continue
+		} else if tag != "" {
+			split := strings.Split(tag, ",")
+			name = split[0]
 		}
-		field.Desc = resolve.Desc
-		for _, handler := range resolve.HandleChain {
-			field.HandlersChain = append(field.HandlersChain, func(ctx context.Context) error {
-				return handler(ctx)
-			})
+		var defaultValue interface{}
+		if f, ok := input.Fields[name]; ok {
+			defaultValue = f.DefaultValue
 		}
-		return field, nil
-	} else if typ := reflect.TypeOf(fn); fn != nil && typ.Kind() == reflect.Func {
-		fctx := funcContext{}
-		args := make(map[string]*builder.Argument)
-		if typ.NumIn() > 3 {
-			return nil, fmt.Errorf("field num in can not more than 3")
+		fieldTyp, err := sb.getType(field.Type)
+		if err != nil {
+			return err
 		}
-		for i := 0; i < typ.NumIn(); i++ {
-			inTyp := typ.In(i)
-			switch inTyp {
-			case reflect.TypeOf(context.Background()):
-				fctx.hasContext = true
-			case source, reflect.New(source).Type():
-				fctx.hasSource = true
-			default:
-				fctx.hasArg = true
-				var err error
-				args, err = sb.getArguments(inTyp)
-				if err != nil {
-					return nil, err
-				}
-			}
+		resolve, err := sb.getArgResolve(fieldTyp)
+		if err != nil {
+			return err
 		}
-		if typ.NumOut() > 2 {
-			return nil, fmt.Errorf("field num out can not more than 2")
+		sb.inputObjResolve[name] = resolve
+		inputObject.Fields[name] = &builder.InputField{
+			Name:         name,
+			Type:         fieldTyp,
+			DefaultValue: defaultValue,
 		}
-		var resTyp reflect.Type
-		if typ.NumOut() == 1 {
-			if typ.Out(0) == reflect.TypeOf(errors.New("")) {
-				fctx.hasErr = true
-			} else {
-				fctx.hasRet = true
-				resTyp = typ.Out(0)
-			}
-		}
-		if typ.NumOut() == 2 {
-			resTyp = typ.Out(0)
-			fctx.hasRet, fctx.hasErr = true, true
-			if typ.Out(1) != reflect.TypeOf(errors.New("")) {
-				return nil, fmt.Errorf("if object resolve return 2 res,then the second must be error")
-			}
-		}
-		field := &builder.Field{Args: map[string]*builder.Argument{}}
-		if fctx.hasRet {
-			resType, err := sb.getType(resTyp)
+		inputObject.Fields[name].Type = fieldTyp
+
+	}
+	return nil
+}
+
+func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*builder.Field, error) {
+	fctx := funcContext{typ: src}
+
+	callableFunc, err := fctx.getFuncVal(fnresolve.Fn)
+	if err != nil {
+		return nil, err
+	}
+	in := fctx.getFuncInputTypes()
+	in = fctx.consumeContextAndSource(in)
+
+	argResolve, args, in, err := fctx.getArgParserAndTyp(sb, in)
+	if err != nil {
+		return nil, err
+	}
+	fctx.hasArg = len(args) > 0
+
+	// We have succeeded if no arguments remain.
+	if len(in) != 0 {
+		return nil, fmt.Errorf("%s arguments should be [context][, [*]%s][, args]", fctx.funcType, src)
+	}
+
+	// Parse return values. The first return value must be the actual value, and the second value can optionally be an error.
+	err = fctx.parseReturnSignature(fnresolve)
+	if err != nil {
+		return nil, err
+	}
+
+	retType, err := fctx.getReturnType(sb, fnresolve)
+	if err != nil {
+		return nil, err
+	}
+
+	field := &builder.Field{
+		Type: retType,
+		Args: args,
+		Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
+			// Set up function arguments.
+			funcInputArgs, err := fctx.prepareResolveArgs(source, fctx.hasArg, args, argResolve, ctx)
 			if err != nil {
 				return nil, err
 			}
-			field.Type = resType
-		}
-		field.Args = args
-		field.Resolve = func(ctx context.Context, source, args interface{}) (interface{}, error) {
-			var in []reflect.Value
-			if fctx.hasContext {
-				in = append(in, reflect.ValueOf(ctx))
-			}
-			if fctx.hasSource {
-				in = append(in, reflect.ValueOf(source))
-			}
-			if fctx.hasArg {
-				in = append(in, reflect.ValueOf(args))
-			}
-			values := reflect.ValueOf(fn).Call(in)
-			if fctx.hasRet && fctx.hasErr {
-				return values[0].Interface(), values[1].Interface().(error)
-			}
-			if fctx.hasRet {
-				return values[0].Interface(), nil
-			}
-			if fctx.hasErr {
-				return nil, values[0].Interface().(error)
-			}
-			return nil, nil
-		}
-		return field, nil
+			var funcOutputArgs []reflect.Value
+			funcOutputArgs = callableFunc.Call(funcInputArgs)
+
+			return fctx.extractResultAndErr(funcOutputArgs, retType)
+		},
+		Desc: fnresolve.Desc,
 	}
-	return nil, fmt.Errorf("error field type")
+	for _, handler := range fnresolve.HandleChain {
+		field.HandlersChain = append(field.HandlersChain, func(ctx context.Context) error {
+			return handler(ctx)
+		})
+	}
+
+	return field, nil
 }
 
 func (sb *schemaBuilder) getTypeFunction(fn interface{}, source reflect.Type) (builder.TypeResolve, error) {
@@ -519,54 +470,97 @@ func (sb *schemaBuilder) getTypeFunction(fn interface{}, source reflect.Type) (b
 	}, nil
 }
 
-func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*builder.Argument, error) {
+func (sb *schemaBuilder) getArguments(typ reflect.Type) (func(args interface{}) (interface{}, error), map[string]*builder.Argument, error) {
 	args := make(map[string]*builder.Argument)
 	if typ.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("object args must be struct")
+		return nil, nil, fmt.Errorf("object args must be struct")
 	}
+	resolve := make(map[string]func(interface{}) (interface{}, error))
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		fieldTyp, err := sb.getType(field.Type)
-		if err != nil {
-			return nil, err
-		}
-		if !builder.IsInputType(fieldTyp) {
-			return nil, fmt.Errorf("object field type can not be interface,union and object")
-		}
 		name := field.Name
-		//var nonnull bool
+		if !ast.IsExported(name) {
+			return nil, nil, fmt.Errorf("arg field name must can exproted, but %s not", name)
+		}
 		var desc string
-		//var itemNonnull bool
 		if tag := field.Tag.Get("graphql"); tag == "-" {
 			continue
 		} else if tag != "" {
 			split := strings.Split(tag, ",")
 			name = split[0]
-			//if len(split) > 1 && split[1] == "nonnull" {
-			//	nonnull = true
-			//}
 			if len(split) > 1 {
 				desc = split[1]
 			}
-			//if len(split) > 3 && split[3] == "itemNonnull" {
-			//	itemNonnull = true
-			//}
 		}
-		//if builder.IsBasicType(fieldTyp) {
-		//	if fieldTyp, ok := fieldTyp.(*builder.List); ok && itemNonnull {
-		//		fieldTyp.Type = &builder.NonNull{Type: fieldTyp.Type}
-		//	}
-		//	if nonnull {
-		//		fieldTyp = &builder.NonNull{Type: fieldTyp}
-		//	}
-		//}
+		fieldTyp, err := sb.getType(field.Type)
+		if err != nil {
+			return nil, nil, err
+		}
+		argResolve, err := sb.getArgResolve(fieldTyp)
+		if err != nil {
+			return nil, nil, err
+		}
+		resolve[name] = argResolve
 		args[name] = &builder.Argument{
 			Name: name,
 			Type: fieldTyp,
 			Desc: desc,
 		}
 	}
-	return args, nil
+	return func(args interface{}) (interface{}, error) {
+		if m, ok := args.(map[string]interface{}); ok {
+			strval := strbuilder.EmptyBuilder
+			for key, val := range m {
+				value, err := resolve[key](val)
+				if err != nil {
+					return nil, err
+				}
+				strval = strbuilder.Set(strval, key, value).(strbuilder.Builder)
+			}
+			return strbuilder.GetStructLikeByTag(strval, reflect.New(typ).Elem(), "graphql"), nil
+		}
+		return nil, fmt.Errorf("expected arg map but got %v", args)
+	}, args, nil
+}
+
+func (sb *schemaBuilder) getArgResolve(typ builder.Type) (func(interface{}) (interface{}, error), error) {
+	switch typ := typ.(type) {
+	case *builder.Scalar:
+		return typ.ParseValue, nil
+	case *builder.Enum:
+		return func(value interface{}) (interface{}, error) {
+			if _, ok := value.(string); !ok {
+				return nil, fmt.Errorf("enum value must be string")
+			}
+			return typ.ReverseMap[value.(string)], nil
+		}, nil
+	case *builder.InputObject:
+		return sb.inputObjResolve[typ.Name], nil
+	case *builder.NonNull:
+		return sb.getArgResolve(typ.Type)
+	case *builder.List:
+		resolve, err := sb.getArgResolve(typ.Type)
+		if err != nil {
+			return nil, err
+		}
+		return func(value interface{}) (interface{}, error) {
+			if value, ok := value.([]interface{}); ok {
+				res := make([]interface{}, len(value))
+				for index, val := range value {
+					val, err := resolve(val)
+					if err != nil {
+						return nil, err
+					}
+					res[index] = val
+				}
+				return res, nil
+			} else {
+				return nil, fmt.Errorf("arg expected slice but got %v", value)
+			}
+		}, nil
+	default:
+		return nil, fmt.Errorf("object field type can not be interface,union and object")
+	}
 }
 
 type funcContext struct {
@@ -575,6 +569,205 @@ type funcContext struct {
 	hasArg     bool
 	hasRet     bool
 	hasErr     bool
+	sourcePtr  bool
+	argTyp     reflect.Type
+	funcType   reflect.Type
+	isPtrFunc  bool
+	typ        reflect.Type
+
+	returnsFunc    bool
+	wrapperFuncTyp reflect.Type
+}
+
+func (f *funcContext) getFuncVal(fn interface{}) (reflect.Value, error) {
+	fun := reflect.ValueOf(fn)
+	if fun.Kind() != reflect.Func {
+		return fun, fmt.Errorf("fun must be func, not %s", fun)
+	}
+	f.funcType = fun.Type()
+	return fun, nil
+}
+
+// getFuncInputTypes returns the input arguments for the function we're representing.
+func (funcCtx *funcContext) getFuncInputTypes() []reflect.Type {
+	in := make([]reflect.Type, 0, funcCtx.funcType.NumIn())
+	for i := 0; i < funcCtx.funcType.NumIn(); i++ {
+		in = append(in, funcCtx.funcType.In(i))
+	}
+	return in
+}
+
+// consumeContextAndSource reads in the input parameters for the provided function and determines whether the function has a Context input parameter
+// and/or whether it includes the "source" input parameter ("source" will be the object type that this function is connected to).  If we find either of these
+// fields we will pop that field from the input parameters we return (since we've already "dealt" with those fields).
+func (funcCtx *funcContext) consumeContextAndSource(in []reflect.Type) []reflect.Type {
+	ptr := reflect.PtrTo(funcCtx.typ)
+
+	if len(in) > 0 && in[0] == reflect.TypeOf(context.Background()) {
+		funcCtx.hasContext = true
+		in = in[1:]
+	}
+
+	if len(in) > 0 && (in[0] == funcCtx.typ || in[0] == ptr) {
+		funcCtx.hasSource = true
+		funcCtx.isPtrFunc = in[0] == ptr
+		in = in[1:]
+	}
+
+	return in
+}
+
+// getArgParserAndTyp reads a list of input parameters, and, if we have a set of custom parameters for the field func (at this point any input type other
+// than the selectionSet is considered the args input), we will return the argParser for that type and pop that field from the returned input parameters.
+func (funcCtx *funcContext) getArgParserAndTyp(sb *schemaBuilder, in []reflect.Type) (func(interface{}) (interface{}, error),
+	map[string]*builder.Argument, []reflect.Type, error) {
+	args := make(map[string]*builder.Argument)
+	var resolve func(interface{}) (interface{}, error)
+	if len(in) > 0 {
+		var err error
+		inTyp := in[0]
+		resolve, args, err = sb.getArguments(inTyp)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		in = in[1:]
+	}
+	return resolve, args, in, nil
+}
+
+// parseReturnSignature reads and validates the return signature of the function to determine whether it has a return type and/or an error response.
+func (funcCtx *funcContext) parseReturnSignature(r *fieldResolve) (err error) {
+	out := make([]reflect.Type, 0, funcCtx.funcType.NumOut())
+	for i := 0; i < funcCtx.funcType.NumOut(); i++ {
+		out = append(out, funcCtx.funcType.Out(i))
+	}
+
+	if len(out) > 0 && out[0] != errType {
+		funcCtx.hasRet = true
+
+		if out[0].Kind() == reflect.Func {
+			funcCtx.returnsFunc = true
+		}
+
+		out = out[1:]
+	}
+
+	if len(out) > 0 && out[0] == errType {
+		funcCtx.hasErr = true
+		out = out[1:]
+	}
+
+	if len(out) != 0 {
+		err = fmt.Errorf("%s return values should [result][, error]", funcCtx.funcType)
+		return
+	}
+
+	if !funcCtx.hasRet && r.MarkedNonNullable {
+		err = fmt.Errorf("%s is marked non-nullable, but has no return value", funcCtx.funcType)
+		return
+	}
+
+	return
+}
+
+// getReturnType returns a GraphQL node type for the return type of the function.  So an object "User" that has a linked function which returns a
+// list of "Hats" will resolve the GraphQL type of a "Hat" at this point.
+func (funcCtx *funcContext) getReturnType(sb *schemaBuilder, m *fieldResolve) (builder.Type, error) {
+	var retType builder.Type
+	if funcCtx.hasRet {
+		var err error
+
+		if funcCtx.returnsFunc {
+			function := funcCtx.funcType.Out(0)
+
+			if function.NumIn() > 0 {
+				return nil, fmt.Errorf("%s should have zero arguments", function)
+			}
+
+			funcCtx.wrapperFuncTyp = funcCtx.typ
+			funcCtx.funcType = function
+		}
+
+		retType, err = sb.getType(funcCtx.funcType.Out(0))
+		if err != nil {
+			return nil, err
+		}
+
+		if m.MarkedNonNullable {
+			if _, ok := retType.(*builder.NonNull); !ok {
+				retType = &builder.NonNull{Type: retType}
+			}
+		}
+	} else {
+		var err error
+		retType, err = sb.getType(reflect.TypeOf(true))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return retType, nil
+}
+
+// prepareResolveArgs converts the provided source, args and context into the required list of reflect.Value types that the function needs to be called.
+func (funcCtx *funcContext) prepareResolveArgs(source interface{}, hasArgs bool, args interface{},
+	argResolve func(interface{}) (interface{}, error), ctx context.Context) ([]reflect.Value, error) {
+	in := make([]reflect.Value, 0, funcCtx.funcType.NumIn())
+	if funcCtx.hasContext {
+		in = append(in, reflect.ValueOf(ctx))
+	}
+
+	// Set up source.
+	if funcCtx.hasSource {
+		sourceValue := reflect.ValueOf(source)
+		ptrSource := sourceValue.Kind() == reflect.Ptr
+		switch {
+		case ptrSource && !funcCtx.isPtrFunc:
+			in = append(in, sourceValue.Elem())
+		case !ptrSource && funcCtx.isPtrFunc:
+			copyPtr := reflect.New(funcCtx.typ)
+			copyPtr.Elem().Set(sourceValue)
+			in = append(in, copyPtr)
+		default:
+			in = append(in, sourceValue)
+		}
+	}
+
+	// Set up other arguments.
+	if hasArgs {
+		args, err := argResolve(args)
+		if err != nil {
+			return nil, err
+		}
+		in = append(in, reflect.ValueOf(args))
+	}
+
+	return in, nil
+}
+
+// extractResultAndErr converts the response from calling the function into the expected type for the response object (as opposed to a reflect.Value).
+// It also handles reading whether the function ended with errors.
+func (funcCtx *funcContext) extractResultAndErr(out []reflect.Value, retType builder.Type) (interface{}, error) {
+	var result interface{}
+	if funcCtx.hasRet {
+		result = out[0].Interface()
+		out = out[1:]
+	} else {
+		result = true
+	}
+	if funcCtx.hasErr {
+		if err := out[0]; !err.IsNil() {
+			return nil, err.Interface().(error)
+		}
+	}
+
+	if _, ok := retType.(*builder.NonNull); ok {
+		resultValue := reflect.ValueOf(result)
+		if resultValue.Kind() == reflect.Ptr && resultValue.IsNil() {
+			return nil, fmt.Errorf("%s is marked non-nullable but returned a null value", funcCtx.funcType)
+		}
+	}
+
+	return result, nil
 }
 
 var scalars = map[string]*Scalar{

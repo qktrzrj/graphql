@@ -125,7 +125,10 @@ func parseSelectionSet(input *ast.SelectionSet, globalFragments map[string]*buil
 			fragments = append(fragments, fragmentSpread)
 
 		case *ast.InlineFragment:
-			on := selection.TypeCondition.Name.Name
+			var on string
+			if selection.TypeCondition != nil {
+				on = selection.TypeCondition.Name.Name
+			}
 
 			directives, err := parseDirectives(selection.Directives, vars)
 			if err != nil {

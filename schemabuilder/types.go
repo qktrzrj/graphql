@@ -44,13 +44,6 @@ var NonNullField FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
 	return nil
 }
 
-var NonNullItem FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
-	if len(resolve) > 0 {
-		resolve[0].MarkedItemNonNull = true
-	}
-	return nil
-}
-
 // Enum is a representation of an enum that includes both the mapping and reverse mapping.
 type Enum struct {
 	Name       string
@@ -201,7 +194,6 @@ func (s *Scalar) LiteralFunc(fn func(value ast.Value) error) {
 
 type fieldResolve struct {
 	MarkedNonNullable bool
-	MarkedItemNonNull bool
 	Fn                interface{}
 	Desc              string
 	HandleChain       []HandleFunc
@@ -220,15 +212,18 @@ var Boolean = &Scalar{
 	Type:      bool(false),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		asBool, ok := value.(bool)
-		if !ok {
+		switch value := value.(type) {
+		case bool:
+			return value, nil
+		case *bool:
+			return value, nil
+		default:
 			if value == nil {
-				asBool = false
+				return false, nil
 			} else {
 				return nil, errors.New("not a bool")
 			}
 		}
-		return asBool, nil
 	},
 }
 
@@ -238,8 +233,13 @@ var Int = &Scalar{
 	Type:      int(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return int32(0), nil
 			} else {
@@ -259,8 +259,13 @@ var Int8 = &Scalar{
 	Type:      int8(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return int8(0), nil
 			} else {
@@ -280,8 +285,13 @@ var Int16 = &Scalar{
 	Type:      int16(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return int16(0), nil
 			} else {
@@ -301,8 +311,13 @@ var Int32 = &Scalar{
 	Type:      int32(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return int32(0), nil
 			} else {
@@ -322,8 +337,13 @@ var Int64 = &Scalar{
 	Type:      int64(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return int64(0), nil
 			} else {
@@ -343,8 +363,13 @@ var Uint = &Scalar{
 	Type:      uint(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return uint(0), nil
 			} else {
@@ -364,8 +389,13 @@ var Uint8 = &Scalar{
 	Type:      uint8(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return uint8(0), nil
 			} else {
@@ -385,8 +415,13 @@ var Uint16 = &Scalar{
 	Type:      uint16(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return uint16(0), nil
 			} else {
@@ -406,8 +441,13 @@ var Uint32 = &Scalar{
 	Type:      uint32(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return uint32(0), nil
 			} else {
@@ -427,8 +467,13 @@ var Uint64 = &Scalar{
 	Type:      uint64(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return uint64(0), nil
 			} else {
@@ -448,8 +493,13 @@ var Float = &Scalar{
 	Type:      float32(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
 				return float32(0), nil
 			} else {
@@ -469,10 +519,15 @@ var Float64 = &Scalar{
 	Type:      float64(0),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(float64)
-		if !ok {
+		var val float64
+		switch value := value.(type) {
+		case float64:
+			val = value
+		case *float64:
+			val = *value
+		default:
 			if value == nil {
-				return float64(0), nil
+				return int32(0), nil
 			} else {
 				return nil, errors.New("not a number")
 			}
@@ -488,15 +543,18 @@ var String = &Scalar{
 	Type:      string(""),
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
-		val, ok := value.(string)
-		if !ok {
+		switch value := value.(type) {
+		case string:
+			return value, nil
+		case *string:
+			return *value, nil
+		default:
 			if value == nil {
 				return "", nil
 			} else {
-				return nil, errors.New("not a number")
+				return nil, errors.New("not a string")
 			}
 		}
-		return val, nil
 	},
 }
 
@@ -552,7 +610,7 @@ var Map = &Scalar{
 				return nil, errors.New("not a string")
 			}
 		}
-		mmap := &MMap{Value: v}
+		mmap := MMap{Value: v}
 		return mmap, nil
 	},
 }
@@ -592,11 +650,11 @@ var Bytes = &Scalar{
 }
 
 type includeArg struct {
-	If bool `graphql:"if,nonnull,Included when true."`
+	If bool `graphql:"if,Included when true."`
 }
 
 type skipArg struct {
-	If bool `graphql:"if,nonnull,Skipped when true."`
+	If bool `graphql:"if,Skipped when true."`
 }
 
 var IncludeDirective = &Directive{

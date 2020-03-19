@@ -82,7 +82,7 @@ func (e *Executor) execute(ctx context.Context, typ builder.Type, source interfa
 		return unwrap(source), nil
 	case *builder.Enum:
 		val := unwrap(source)
-		if mapVal, ok := typ.ReverseMap[val]; ok {
+		if mapVal, ok := typ.Map[val]; ok {
 			return mapVal, nil
 		}
 		return nil, errors.New("enum is not valid")
@@ -273,13 +273,30 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 		return nil, nil
 	}
 	fields := make(map[string]interface{})
-
-	object := typ.TypeResolve(ctx, source)
+	var object *builder.Object
+	if typ.TypeResolve != nil {
+		object = typ.TypeResolve(ctx, source)
+	} else {
+		sourceTyp := reflect.TypeOf(source)
+		if sourceTyp.Kind() == reflect.Ptr {
+			sourceTyp = sourceTyp.Elem()
+		}
+		for _, graphqlTyp := range typ.PossibleTypes {
+			destTyp := reflect.TypeOf(graphqlTyp.IsTypeOf)
+			if destTyp.Kind() == reflect.Ptr {
+				destTyp = destTyp.Elem()
+			}
+			if destTyp == sourceTyp {
+				object = graphqlTyp
+				break
+			}
+		}
+	}
 	if object == nil {
 		return nil, fmt.Errorf("can not find the type for interface %s", typ.Name)
 	}
 
-	typString, graphqlTyp := object.Name, typ.PossibleTypes[object.Name]
+	typString, graphqlTyp := object.Name, object
 
 	// modifiedSelectionSet selection set contains fragments on typString
 	modifiedSelectionSet := &builder.SelectionSet{

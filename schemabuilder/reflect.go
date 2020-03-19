@@ -1,6 +1,7 @@
 package schemabuilder
 
 import (
+	"context"
 	"reflect"
 	"strings"
 )
@@ -35,8 +36,7 @@ func getMethod(source interface{}, name string) reflect.Type {
 	return nil
 }
 
-func GetField(source reflect.Value, name string) *reflect.Value {
-	typ := reflect.ValueOf(source)
+func GetField(typ reflect.Value, name string) *reflect.Value {
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		fieldTyp := typ.Type().Field(i)
@@ -53,3 +53,7 @@ func GetField(source reflect.Value, name string) *reflect.Value {
 	}
 	return nil
 }
+
+// Common Types that we will need to perform type assertions against.
+var errType = reflect.TypeOf((*error)(nil)).Elem()
+var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()

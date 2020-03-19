@@ -29,7 +29,7 @@ type context struct {
 	opErrs           map[*ast.OperationDefinition][]*errors.GraphQLError
 	usedVars         map[*ast.OperationDefinition]varSet
 	fragmentNameUsed map[string]bool
-	fragments        map[string]*ast.FragmentDefinition
+	//fragments        map[string]*ast.FragmentDefinition
 	fieldMap         map[*ast.Field]fieldInfo
 	overlapValidated map[selectionPair]struct{}
 	maxDepth         int
@@ -148,10 +148,10 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 		default:
 			panic("unreachable")
 		}
-		validateSelectionSet(opc, op.SelectionSet.Selections, obj)
+		validateSelectionSet(opc, op.SelectionSet, obj)
 
 		fragUsed := make(map[*ast.FragmentDefinition]struct{})
-		markUsedFragments(ctx, op.SelectionSet.Selections, fragUsed)
+		markUsedFragments(ctx, op.SelectionSet, fragUsed)
 		for frag := range fragUsed {
 			fragUsedBy[frag] = append(fragUsedBy[frag], op)
 		}
@@ -172,10 +172,10 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 			continue
 		}
 
-		validateSelectionSet(opc, frag.SelectionSet.Selections, t)
+		validateSelectionSet(opc, frag.SelectionSet, t)
 
 		if _, ok := fragVisited[frag]; !ok {
-			detectFragmentCycle(ctx, frag.SelectionSet.Selections, fragVisited, nil, map[string]int{frag.Name.Name: 0})
+			detectFragmentCycle(ctx, frag.SelectionSet, fragVisited, nil, map[string]int{frag.Name.Name: 0})
 		}
 	}
 
@@ -192,7 +192,7 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 		for _, v := range op.Vars {
 			if _, ok := opUsedVars[v]; !ok {
 				opSuffix := ""
-				if op.Name.Name != "" {
+				if op.Name != nil && op.Name.Name != "" {
 					opSuffix = fmt.Sprintf(" in operation %q", op.Name.Name)
 				}
 				ctx.addErr(v.Loc, "NoUnusedVariables", "Variable %q is never used%s.", "$"+v.Var.Name.Name, opSuffix)
@@ -219,14 +219,16 @@ func validateNameCustomMsg(c *context, set nameSet, name *ast.Name, rule string,
 	set[name.Name] = name.Loc
 }
 
-func validateSelectionSet(c *opContext, sels []ast.Selection, t builder.NamedType) {
-	for _, sel := range sels {
-		validateSelection(c, sel, t)
-	}
+func validateSelectionSet(c *opContext, sels *ast.SelectionSet, t builder.NamedType) {
+	if sels != nil {
+		for _, sel := range sels.Selections {
+			validateSelection(c, sel, t)
+		}
 
-	for i, a := range sels {
-		for _, b := range sels[i+1:] {
-			c.validateOverlap(a, b, nil, nil)
+		for i, a := range sels.Selections {
+			for _, b := range sels.Selections[i+1:] {
+				c.validateOverlap(a, b, nil, nil)
+			}
 		}
 	}
 }
@@ -293,35 +295,35 @@ func validateSelection(c *opContext, sel ast.Selection, t builder.NamedType) {
 			}
 		}
 		if sel.SelectionSet != nil && sel.SelectionSet.Selections != nil {
-			validateSelectionSet(c, sel.SelectionSet.Selections, unwrapType(ft))
+			validateSelectionSet(c, sel.SelectionSet, unwrapType(ft))
 		}
 
 	case *ast.InlineFragment:
 		validateDirectives(c, "INLINE_FRAGMENT", sel.Directives)
-		if sel.TypeCondition.Name.Name != "" {
+		if sel.TypeCondition != nil && sel.TypeCondition.Name.Name != "" {
 			fragTyp := unwrapType(utils.TypeFromAst(c.schema, sel.TypeCondition))
-			if fragTyp != nil && !compatible(t, fragTyp) {
-				c.addErr(sel.Loc, "PossibleFragmentSpreads", "Fragment cannot be spread here as objects of type %q can never be of type %q.", t, fragTyp)
+			if !compatible(t, fragTyp) {
+				c.addErr(sel.Loc, "PossibleFragmentSpreads", "Fragment cannot be spread here as objects of type %q can never be of type %q.", t.TypeName(), sel.TypeCondition.Name.Name)
 			}
 			t = fragTyp
 			// continue even if t is nil
 		}
 		if t != nil && !canBeFragment(t) {
-			c.addErr(sel.TypeCondition.Loc, "FragmentsOnCompositeTypes", "Fragment cannot condition on non composite type %q.", t)
+			c.addErr(sel.TypeCondition.Loc, "FragmentsOnCompositeTypes", "Fragment cannot condition on non composite type %q.", t.TypeName())
 			return
 		}
-		validateSelectionSet(c, sel.SelectionSet.Selections, unwrapType(t))
+		validateSelectionSet(c, sel.SelectionSet, unwrapType(t))
 
 	case *ast.FragmentSpread:
 		validateDirectives(c, "FRAGMENT_SPREAD", sel.Directives)
-		frag := c.fragments[sel.Name.Name]
+		frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
 		if frag == nil {
 			c.addErr(sel.Name.Loc, "KnownFragmentNames", "Unknown fragment %q.", sel.Name.Name)
 			return
 		}
 		fragTyp := c.schema.TypeMap[frag.TypeCondition.Name.Name]
 		if !compatible(t, fragTyp) {
-			c.addErr(sel.Loc, "PossibleFragmentSpreads", "Fragment %q cannot be spread here as objects of type %q can never be of type %q.", frag.Name.Name, t, fragTyp)
+			c.addErr(sel.Loc, "PossibleFragmentSpreads", "Fragment %q cannot be spread here as objects of type %q can never be of type %q.", frag.Name.Name, t.TypeName(), frag.TypeCondition.Name.Name)
 		}
 
 	default:
@@ -360,12 +362,13 @@ func (c *context) validateOverlap(a, b ast.Selection, reasons *[]string, locs *[
 			}
 
 		case *ast.InlineFragment:
-			for _, sel := range b.SelectionSet.Selections {
-				c.validateOverlap(a, sel, reasons, locs)
+			if b.SelectionSet != nil {
+				for _, sel := range b.SelectionSet.Selections {
+					c.validateOverlap(a, sel, reasons, locs)
+				}
 			}
-
 		case *ast.FragmentSpread:
-			if frag := c.fragments[b.Name.Name]; frag != nil {
+			if frag := utils.GetFragment(c.doc.Fragments, b.Name.Name); frag != nil && frag.SelectionSet != nil {
 				for _, sel := range frag.SelectionSet.Selections {
 					c.validateOverlap(a, sel, reasons, locs)
 				}
@@ -376,12 +379,13 @@ func (c *context) validateOverlap(a, b ast.Selection, reasons *[]string, locs *[
 		}
 
 	case *ast.InlineFragment:
-		for _, sel := range a.SelectionSet.Selections {
-			c.validateOverlap(sel, b, reasons, locs)
+		if a.SelectionSet != nil {
+			for _, sel := range a.SelectionSet.Selections {
+				c.validateOverlap(sel, b, reasons, locs)
+			}
 		}
-
 	case *ast.FragmentSpread:
-		if frag := c.fragments[a.Name.Name]; frag != nil {
+		if frag := utils.GetFragment(c.doc.Fragments, a.Name.Name); frag != nil && frag.SelectionSet != nil {
 			for _, sel := range frag.SelectionSet.Selections {
 				c.validateOverlap(sel, b, reasons, locs)
 			}
@@ -419,46 +423,52 @@ func (c *context) validateFieldOverlap(a, b *ast.Field) ([]string, []errors.Loca
 
 	var reasons []string
 	var locs []errors.Location
-	for _, a2 := range a.SelectionSet.Selections {
-		for _, b2 := range b.SelectionSet.Selections {
-			c.validateOverlap(a2, b2, &reasons, &locs)
+	if a.SelectionSet != nil && b.SelectionSet != nil {
+		for _, a2 := range a.SelectionSet.Selections {
+			for _, b2 := range b.SelectionSet.Selections {
+				c.validateOverlap(a2, b2, &reasons, &locs)
+			}
 		}
 	}
 	return reasons, locs
 }
 
-func markUsedFragments(c *context, sels []ast.Selection, fragUsed map[*ast.FragmentDefinition]struct{}) {
-	for _, sel := range sels {
-		switch sel := sel.(type) {
-		case *ast.Field:
-			if sel.SelectionSet != nil && sel.SelectionSet.Selections != nil {
-				markUsedFragments(c, sel.SelectionSet.Selections, fragUsed)
+func markUsedFragments(c *context, sels *ast.SelectionSet, fragUsed map[*ast.FragmentDefinition]struct{}) {
+	if sels != nil {
+		for _, sel := range sels.Selections {
+			switch sel := sel.(type) {
+			case *ast.Field:
+				if sel.SelectionSet != nil && sel.SelectionSet.Selections != nil {
+					markUsedFragments(c, sel.SelectionSet, fragUsed)
+				}
+
+			case *ast.InlineFragment:
+				markUsedFragments(c, sel.SelectionSet, fragUsed)
+
+			case *ast.FragmentSpread:
+				frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
+				if frag == nil {
+					return
+				}
+
+				if _, ok := fragUsed[frag]; ok {
+					return
+				}
+				fragUsed[frag] = struct{}{}
+				markUsedFragments(c, frag.SelectionSet, fragUsed)
+
+			default:
+				panic("unreachable")
 			}
-
-		case *ast.InlineFragment:
-			markUsedFragments(c, sel.SelectionSet.Selections, fragUsed)
-
-		case *ast.FragmentSpread:
-			frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
-			if frag == nil {
-				return
-			}
-
-			if _, ok := fragUsed[frag]; ok {
-				return
-			}
-			fragUsed[frag] = struct{}{}
-			markUsedFragments(c, frag.SelectionSet.Selections, fragUsed)
-
-		default:
-			panic("unreachable")
 		}
 	}
 }
 
-func detectFragmentCycle(c *context, sels []ast.Selection, fragVisited map[*ast.FragmentDefinition]struct{}, spreadPath []*ast.FragmentSpread, spreadPathIndex map[string]int) {
-	for _, sel := range sels {
-		detectFragmentCycleSel(c, sel, fragVisited, spreadPath, spreadPathIndex)
+func detectFragmentCycle(c *context, sels *ast.SelectionSet, fragVisited map[*ast.FragmentDefinition]struct{}, spreadPath []*ast.FragmentSpread, spreadPathIndex map[string]int) {
+	if sels != nil {
+		for _, sel := range sels.Selections {
+			detectFragmentCycleSel(c, sel, fragVisited, spreadPath, spreadPathIndex)
+		}
 	}
 }
 
@@ -466,11 +476,11 @@ func detectFragmentCycleSel(c *context, sel ast.Selection, fragVisited map[*ast.
 	switch sel := sel.(type) {
 	case *ast.Field:
 		if sel.SelectionSet != nil && sel.SelectionSet.Selections != nil {
-			detectFragmentCycle(c, sel.SelectionSet.Selections, fragVisited, spreadPath, spreadPathIndex)
+			detectFragmentCycle(c, sel.SelectionSet, fragVisited, spreadPath, spreadPathIndex)
 		}
 
 	case *ast.InlineFragment:
-		detectFragmentCycle(c, sel.SelectionSet.Selections, fragVisited, spreadPath, spreadPathIndex)
+		detectFragmentCycle(c, sel.SelectionSet, fragVisited, spreadPath, spreadPathIndex)
 
 	case *ast.FragmentSpread:
 		frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
@@ -504,7 +514,7 @@ func detectFragmentCycleSel(c *context, sel ast.Selection, fragVisited map[*ast.
 		fragVisited[frag] = struct{}{}
 
 		spreadPathIndex[frag.Name.Name] = len(spreadPath)
-		detectFragmentCycle(c, frag.SelectionSet.Selections, fragVisited, spreadPath, spreadPathIndex)
+		detectFragmentCycle(c, frag.SelectionSet, fragVisited, spreadPath, spreadPathIndex)
 		delete(spreadPathIndex, frag.Name.Name)
 
 	default:
@@ -587,17 +597,17 @@ func validateMaxDepth(c *opContext, sels *ast.SelectionSet, depth int) bool {
 		case *ast.InlineFragment:
 			// Depth is not checked because inline fragments resolve to other fields which are checked.
 			// Depth is not incremented because inline fragments have the same depth as neighboring fields
-			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, sel.SelectionSet, depth+1)
+			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, sel.SelectionSet, depth)
 		case *ast.FragmentSpread:
 			// Depth is not checked because fragments resolve to other fields which are checked.
-			frag := c.fragments[sel.Name.Name]
+			frag := utils.GetFragment(c.doc.Fragments, sel.Name.Name)
 			if frag == nil {
 				// In case of unknown fragment (invalid request), ignore max depth evaluation
 				c.addErr(sel.Loc, "MaxDepthEvaluationError", "Unknown fragment %q. Unable to evaluate depth.", sel.Name.Name)
 				continue
 			}
 			// Depth is not incremented because fragments have the same depth as surrounding fields
-			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, frag.SelectionSet, depth+1)
+			exceededMaxDepth = exceededMaxDepth || validateMaxDepth(c, frag.SelectionSet, depth)
 		}
 	}
 
@@ -621,7 +631,7 @@ func validateLiteral(c *opContext, l ast.Value) {
 			v := utils.GetVar(op.Vars, l.Name)
 			if v == nil {
 				byOp := ""
-				if op.Name.Name != "" {
+				if op.Name != nil && op.Name.Name != "" {
 					byOp = fmt.Sprintf(" by operation %q", op.Name.Name)
 				}
 				c.opErrs[op] = append(c.opErrs[op], &errors.GraphQLError{
@@ -812,7 +822,7 @@ func validateBasicValue(ctx *opContext, v ast.Value, t builder.Type) bool {
 		case "String", "Map", "Time", "Bytes":
 			return v.GetKind() == kinds.StringValue
 		case "Boolean":
-			return v.GetKind() == kinds.BooleanValue && (v.GetValue() == "true" || v.GetValue() == "false")
+			return v.GetKind() == kinds.BooleanValue && (v.GetValue() == true || v.GetValue() == false)
 		case "ID":
 			return v.GetKind() == kinds.IntValue || v.GetKind() == kinds.StringValue
 		default:

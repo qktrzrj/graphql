@@ -53,6 +53,7 @@ type Object struct {
 	Desc       string                `json:"description"`
 	Interfaces map[string]*Interface `json:"interfaces"`
 	Fields     map[string]*Field     `json:"fields"`
+	IsTypeOf   interface{}           `json:"-"`
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -85,7 +86,8 @@ type Enum struct {
 	Name       string                 `json:"name"`
 	Values     []string               `json:"values"`
 	ValuesDesc []string               `json:"-"`
-	ReverseMap map[interface{}]string `json:"-"`
+	ReverseMap map[string]interface{} `json:"-"`
+	Map        map[interface{}]string `json:"-"`
 	Desc       string                 `json:"description"`
 }
 

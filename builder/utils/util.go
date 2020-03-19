@@ -28,7 +28,7 @@ func TypeFromAst(schema *builder.Schema, node ast.Node) builder.Type {
 
 func GetVar(vars []*ast.VariableDefinition, name *ast.Name) *ast.VariableDefinition {
 	for _, vv := range vars {
-		if vv.Var.Name == name {
+		if vv.Var.Name.Name == name.Name {
 			return vv
 		}
 	}
