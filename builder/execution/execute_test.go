@@ -453,7 +453,7 @@ func TestExecutor_Execute(t *testing.T) {
 			build.Query().FieldFunc("Data", func() Data { return Data{} }, "")
 			schema := build.MustBuild()
 			result, err := Do(schema, Params{Query: `
-      query ($size: Int) {
+      query ($size: Int!) {
 		Data{
         	a,
         	b,
@@ -482,7 +482,7 @@ func TestExecutor_Execute(t *testing.T) {
         d
         e
       }
-    `, Variables: map[string]interface{}{"size": 100}})
+    `, Variables: map[string]interface{}{"size": float64(100)}})
 			assert.NoError(t, err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)

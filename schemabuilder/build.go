@@ -517,7 +517,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (func(args interface{}) 
 				}
 				strval = strbuilder.Set(strval, key, value).(strbuilder.Builder)
 			}
-			return strbuilder.GetStructLikeByTag(strval, reflect.New(typ).Elem(), "graphql"), nil
+			return strbuilder.GetStructLikeByTag(strval, reflect.New(typ).Elem().Interface(), "graphql", ","), nil
 		}
 		return nil, fmt.Errorf("expected arg map but got %v", args)
 	}, args, nil
