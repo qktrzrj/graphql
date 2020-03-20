@@ -3,15 +3,15 @@ package validation
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
-	"github.com/unrotten/graphql/builder"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
+	"github.com/unrotten/graphql/system"
 	"reflect"
 	"strings"
 	"testing"
 )
 
-var testSchema *builder.Schema
+var testSchema *system.Schema
 
 type Being interface {
 	Name(surname bool) string
@@ -405,7 +405,7 @@ func init() {
 func TestValidate(t *testing.T) {
 	var Nil *errors.GraphQLError
 	t.Run("validates queries", func(t *testing.T) {
-		doc, err := builder.Parse(`
+		doc, err := system.Parse(`
       query {
         catOrDog {
           ... on Cat {
@@ -422,7 +422,7 @@ func TestValidate(t *testing.T) {
 	})
 
 	t.Run("detects bad scalar parse", func(t *testing.T) {
-		doc, err := builder.Parse(`
+		doc, err := system.Parse(`
       query {
         invalidArg(arg: "bad value")
       }
@@ -444,7 +444,7 @@ func TestValidate(t *testing.T) {
       thirdUnknownField
     }
   `
-		doc, err := builder.Parse(query)
+		doc, err := system.Parse(query)
 		assert.Equal(t, Nil, err)
 
 		validateDocument := func(max int) []*errors.GraphQLError {

@@ -2,8 +2,8 @@ package ast
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/kinds"
 )
 
 // GraphQL describes the types of data expected by query variables.

@@ -1,10 +1,10 @@
-package builder
+package system
 
 import (
 	"bytes"
 	"fmt"
-	"github.com/unrotten/graphql/builder/token"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/token"
 	"strings"
 	"text/scanner"
 )

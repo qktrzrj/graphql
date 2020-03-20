@@ -2,23 +2,23 @@ package utils
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/builder"
-	"github.com/unrotten/graphql/builder/ast"
-	"github.com/unrotten/graphql/builder/kinds"
+	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/ast"
+	"github.com/unrotten/graphql/system/kinds"
 )
 
-func TypeFromAst(schema *builder.Schema, node ast.Node) builder.Type {
-	var innerType builder.Type
+func TypeFromAst(schema *system.Schema, node ast.Node) system.Type {
+	var innerType system.Type
 	switch node.GetKind() {
 	case kinds.List:
 		innerType = TypeFromAst(schema, node.(ast.WrappingType).OfType())
 		if innerType != nil {
-			return &builder.List{Type: innerType}
+			return &system.List{Type: innerType}
 		}
 	case kinds.NonNull:
 		innerType = TypeFromAst(schema, node.(ast.WrappingType).OfType())
 		if innerType != nil {
-			return &builder.NonNull{Type: innerType}
+			return &system.NonNull{Type: innerType}
 		}
 	case kinds.Named:
 		return schema.TypeMap[node.(*ast.Named).Name.Name]
@@ -44,7 +44,7 @@ func GetOperation(ops []*ast.OperationDefinition, name ast.OperationType) *ast.O
 	return nil
 }
 
-func GetArgumentType(args []*builder.Argument, name string) *builder.Argument {
+func GetArgumentType(args []*system.Argument, name string) *system.Argument {
 	for _, a := range args {
 		if a.Name == name {
 			return a
@@ -62,8 +62,8 @@ func GetArgumentNode(args []*ast.Argument, name string) *ast.Argument {
 	return nil
 }
 
-func GetArgumentTypes(args map[string]*builder.Argument) []*builder.Argument {
-	var res []*builder.Argument
+func GetArgumentTypes(args map[string]*system.Argument) []*system.Argument {
+	var res []*system.Argument
 	for _, arg := range args {
 		res = append(res, arg)
 	}

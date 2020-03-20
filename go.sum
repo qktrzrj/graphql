@@ -13,8 +13,10 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJyk=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
-github.com/unrotten/builder v1.0.2 h1:9eTZTGK3C0z0tuWUvMidDIoN3S2rqtXvUcwcYQp8HmA=
-github.com/unrotten/builder v1.0.2/go.mod h1:eh1aPjS3A9x4tpzgUi9VaQYBBcQv4PkCKmS+4Px4OcY=
+github.com/unrotten/builder v1.0.3 h1:tYDsdIfV4EKBf6IPtuNC2Q4cD1DcJYZZsOlPdCRDEbs=
+github.com/unrotten/builder v1.0.3/go.mod h1:eh1aPjS3A9x4tpzgUi9VaQYBBcQv4PkCKmS+4Px4OcY=
+github.com/unrotten/builder v1.0.4 h1:dp0lKCFvEhDdj2IYiEuM52MCEjNYpaA+OxzAPCIeqso=
+github.com/unrotten/builder v1.0.4/go.mod h1:eh1aPjS3A9x4tpzgUi9VaQYBBcQv4PkCKmS+4Px4OcY=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 h1:qIbj1fsPNlZgppZ+VLlY7N33q108Sa+fhmuc+sWQYwY=

@@ -1,14 +1,15 @@
 package execution
 
 import (
-	"github.com/unrotten/graphql/builder"
-	"github.com/unrotten/graphql/builder/ast"
-	"github.com/unrotten/graphql/builder/utils"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/ast"
+	"github.com/unrotten/graphql/system/utils"
 	"reflect"
+	"strings"
 )
 
-func ApplySelectionSet(document *builder.Document, operationName string, vars map[string]interface{}) (*builder.SelectionSet, *errors.GraphQLError) {
+func ApplySelectionSet(document *system.Document, operationName string, vars map[string]interface{}) (*system.SelectionSet, *errors.GraphQLError) {
 
 	if len(document.Operations) == 0 {
 		return nil, errors.New("no operations in query document")
@@ -24,17 +25,18 @@ func ApplySelectionSet(document *builder.Document, operationName string, vars ma
 			break
 		}
 	} else {
-		op = utils.GetOperation(document.Operations, ast.OperationType(operationName))
+		op = utils.GetOperation(document.Operations, ast.OperationType(strings.ToUpper(operationName)))
 		if op == nil {
 			return nil, errors.New("no operation with name %q", operationName)
 		}
 	}
-	rv := &builder.SelectionSet{}
-	globalFragments := make(map[string]*builder.FragmentDefinition)
+	rv := &system.SelectionSet{}
+	globalFragments := make(map[string]*system.FragmentDefinition)
 	for _, fragment := range document.Fragments {
-		globalFragments[fragment.Name.Name] = &builder.FragmentDefinition{
+		globalFragments[fragment.Name.Name] = &system.FragmentDefinition{
 			Name: fragment.Name.Name,
 			On:   fragment.TypeCondition.Name.Name,
+			Loc:  fragment.Loc,
 		}
 	}
 
@@ -65,14 +67,14 @@ func ApplySelectionSet(document *builder.Document, operationName string, vars ma
 }
 
 // parseSelectionSet takes a grapqhl-go selection set and converts it to a simplified *SelectionSet, bindings vars
-func parseSelectionSet(input *ast.SelectionSet, globalFragments map[string]*builder.FragmentDefinition,
-	vars map[string]interface{}) (*builder.SelectionSet, *errors.GraphQLError) {
+func parseSelectionSet(input *ast.SelectionSet, globalFragments map[string]*system.FragmentDefinition,
+	vars map[string]interface{}) (*system.SelectionSet, *errors.GraphQLError) {
 	if input == nil {
 		return nil, nil
 	}
 
-	var selections []*builder.Selection
-	var fragments []*builder.FragmentSpread
+	var selections []*system.Selection
+	var fragments []*system.FragmentSpread
 	for _, selection := range input.Selections {
 		switch selection := selection.(type) {
 		case *ast.Field:
@@ -96,12 +98,13 @@ func parseSelectionSet(input *ast.SelectionSet, globalFragments map[string]*buil
 				return nil, err
 			}
 
-			selections = append(selections, &builder.Selection{
+			selections = append(selections, &system.Selection{
 				Alias:        alias,
 				Name:         selection.Name.Name,
 				Args:         args,
 				SelectionSet: selectionSet,
 				Directives:   directives,
+				Loc:          selection.Loc,
 			})
 
 		case *ast.FragmentSpread:
@@ -117,9 +120,10 @@ func parseSelectionSet(input *ast.SelectionSet, globalFragments map[string]*buil
 				return nil, err
 			}
 
-			fragmentSpread := &builder.FragmentSpread{
+			fragmentSpread := &system.FragmentSpread{
 				Fragment:   fragment,
 				Directives: directives,
+				Loc:        fragment.Loc,
 			}
 
 			fragments = append(fragments, fragmentSpread)
@@ -140,17 +144,19 @@ func parseSelectionSet(input *ast.SelectionSet, globalFragments map[string]*buil
 				return nil, err
 			}
 
-			fragments = append(fragments, &builder.FragmentSpread{
-				Fragment: &builder.FragmentDefinition{
+			fragments = append(fragments, &system.FragmentSpread{
+				Fragment: &system.FragmentDefinition{
 					On:           on,
 					SelectionSet: selectionSet,
+					Loc:          selection.Loc,
 				},
 				Directives: directives,
+				Loc:        selection.Loc,
 			})
 		}
 	}
 
-	selectionSet := &builder.SelectionSet{
+	selectionSet := &system.SelectionSet{
 		Selections: selections,
 		Fragments:  fragments,
 	}
@@ -165,7 +171,7 @@ func argsToJson(input []*ast.Argument, vars map[string]interface{}) (map[string]
 		if _, found := args[name]; found {
 			return nil, errors.New("duplicate arg")
 		}
-		value, err := builder.ValueToJson(arg.Value, vars)
+		value, err := system.ValueToJson(arg.Value, vars)
 		if err != nil {
 			return nil, err
 		}
@@ -182,15 +188,15 @@ const (
 	visited
 )
 
-func parseDirectives(directives []*ast.Directive, vars map[string]interface{}) ([]*builder.Directive, *errors.GraphQLError) {
-	d := make([]*builder.Directive, 0, len(directives))
+func parseDirectives(directives []*ast.Directive, vars map[string]interface{}) ([]*system.Directive, *errors.GraphQLError) {
+	d := make([]*system.Directive, 0, len(directives))
 	for _, directive := range directives {
 		args, err := argsToJson(directive.Args, vars)
 		if err != nil {
 			return nil, err
 		}
 
-		d = append(d, &builder.Directive{
+		d = append(d, &system.Directive{
 			Name:    directive.Name.Name,
 			ArgVals: args,
 		})
@@ -199,14 +205,14 @@ func parseDirectives(directives []*ast.Directive, vars map[string]interface{}) (
 }
 
 // detectCyclesAndUnusedFragments finds cycles in fragments that include eachother as well as fragments that don't appear anywhere
-func detectCyclesAndUnusedFragments(selectionSet *builder.SelectionSet, globalFragments map[string]*builder.
+func detectCyclesAndUnusedFragments(selectionSet *system.SelectionSet, globalFragments map[string]*system.
 	FragmentDefinition) *errors.GraphQLError {
-	state := make(map[*builder.FragmentDefinition]visitState)
+	state := make(map[*system.FragmentDefinition]visitState)
 
-	var visitFragment func(spread *builder.FragmentSpread) *errors.GraphQLError
-	var visitSelectionSet func(*builder.SelectionSet) *errors.GraphQLError
+	var visitFragment func(spread *system.FragmentSpread) *errors.GraphQLError
+	var visitSelectionSet func(*system.SelectionSet) *errors.GraphQLError
 
-	visitSelectionSet = func(selectionSet *builder.SelectionSet) *errors.GraphQLError {
+	visitSelectionSet = func(selectionSet *system.SelectionSet) *errors.GraphQLError {
 		if selectionSet == nil {
 			return nil
 		}
@@ -226,7 +232,7 @@ func detectCyclesAndUnusedFragments(selectionSet *builder.SelectionSet, globalFr
 		return nil
 	}
 
-	visitFragment = func(fragment *builder.FragmentSpread) *errors.GraphQLError {
+	visitFragment = func(fragment *system.FragmentSpread) *errors.GraphQLError {
 		switch state[fragment.Fragment] {
 		case visiting:
 			return errors.New("fragment contains itself")
@@ -264,20 +270,20 @@ func detectCyclesAndUnusedFragments(selectionSet *builder.SelectionSet, globalFr
 //
 // A query cannot contain both selections, because they have the same alias
 // with different source names, and they also have different arguments.
-func detectConflicts(selectionSet *builder.SelectionSet) *errors.GraphQLError {
-	state := make(map[*builder.SelectionSet]visitState)
+func detectConflicts(selectionSet *system.SelectionSet) *errors.GraphQLError {
+	state := make(map[*system.SelectionSet]visitState)
 
-	var visitChild func(*builder.SelectionSet) *errors.GraphQLError
-	visitChild = func(selectionSet *builder.SelectionSet) *errors.GraphQLError {
+	var visitChild func(*system.SelectionSet) *errors.GraphQLError
+	visitChild = func(selectionSet *system.SelectionSet) *errors.GraphQLError {
 		if state[selectionSet] == visited {
 			return nil
 		}
 		state[selectionSet] = visited
 
-		selections := make(map[string]*builder.Selection)
+		selections := make(map[string]*system.Selection)
 
-		var visitSibling func(*builder.SelectionSet) *errors.GraphQLError
-		visitSibling = func(selectionSet *builder.SelectionSet) *errors.GraphQLError {
+		var visitSibling func(*system.SelectionSet) *errors.GraphQLError
+		visitSibling = func(selectionSet *system.SelectionSet) *errors.GraphQLError {
 			for _, selection := range selectionSet.Selections {
 				if other, found := selections[selection.Alias]; found {
 					if other.Name != selection.Name {
@@ -329,12 +335,12 @@ func detectConflicts(selectionSet *builder.SelectionSet) *errors.GraphQLError {
 //
 // Flatten does _not_ flatten out the inner queries, so the name above does not
 // get flattened out yet.
-func Flatten(selectionSet *builder.SelectionSet) ([]*builder.Selection, error) {
-	grouped := make(map[string][]*builder.Selection)
+func Flatten(selectionSet *system.SelectionSet) ([]*system.Selection, error) {
+	grouped := make(map[string][]*system.Selection)
 
-	state := make(map[*builder.SelectionSet]visitState)
-	var visit func(*builder.SelectionSet) error
-	visit = func(selectionSet *builder.SelectionSet) error {
+	state := make(map[*system.SelectionSet]visitState)
+	var visit func(*system.SelectionSet) error
+	visit = func(selectionSet *system.SelectionSet) error {
 		if state[selectionSet] == visited {
 			return nil
 		}
@@ -363,24 +369,25 @@ func Flatten(selectionSet *builder.SelectionSet) ([]*builder.Selection, error) {
 		return nil, err
 	}
 
-	var flattened []*builder.Selection
+	var flattened []*system.Selection
 	for _, selections := range grouped {
 		if len(selections) == 1 || selections[0].SelectionSet == nil {
 			flattened = append(flattened, selections[0])
 			continue
 		}
 
-		merged := &builder.SelectionSet{}
+		merged := &system.SelectionSet{}
 		for _, selection := range selections {
 			merged.Selections = append(merged.Selections, selection.SelectionSet.Selections...)
 			merged.Fragments = append(merged.Fragments, selection.SelectionSet.Fragments...)
 		}
 
-		flattened = append(flattened, &builder.Selection{
+		flattened = append(flattened, &system.Selection{
 			Name:         selections[0].Name,
 			Alias:        selections[0].Alias,
 			Args:         selections[0].Args,
 			SelectionSet: merged,
+			Loc:          selections[0].Loc,
 		})
 	}
 

@@ -2,15 +2,15 @@ package graphql
 
 import (
 	"encoding/json"
-	"github.com/unrotten/graphql/builder"
-	"github.com/unrotten/graphql/builder/execution"
-	"github.com/unrotten/graphql/builder/validation"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/execution"
+	"github.com/unrotten/graphql/system/validation"
 	"net/http"
 )
 
 type Handler struct {
-	Schema   *builder.Schema
+	Schema   *system.Schema
 	Executor *execution.Executor
 	ctx      *Context
 }
@@ -26,7 +26,7 @@ type Response struct {
 
 // Validate validates the given query with the Schema.
 func (s *Handler) Validate(queryString string) []*errors.GraphQLError {
-	doc, qErr := builder.Parse(queryString)
+	doc, qErr := system.Parse(queryString)
 	if qErr != nil {
 		return []*errors.GraphQLError{qErr}
 	}
@@ -63,7 +63,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Exec(ctx *Context, queryString string, operationName string, variables map[string]interface{}) *Response {
-	doc, qErr := builder.Parse(queryString)
+	doc, qErr := system.Parse(queryString)
 	if qErr != nil {
 		return &Response{Errors: []*errors.GraphQLError{qErr}}
 	}
@@ -89,10 +89,8 @@ func (h *Handler) Exec(ctx *Context, queryString string, operationName string, v
 
 	execute, exeErr := ctx.Execute(), ctx.Err()
 
-	if exeErr != nil {
-		return &Response{Errors: []*errors.GraphQLError{err}}
-	}
 	return &Response{
-		Data: execute,
+		Data:   execute,
+		Errors: exeErr.(errors.MultiError),
 	}
 }

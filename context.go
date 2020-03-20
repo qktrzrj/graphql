@@ -1,7 +1,8 @@
 package graphql
 
 import (
-	"github.com/unrotten/graphql/builder"
+	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system"
 	"log"
 	"net/http"
 	"os"
@@ -17,11 +18,11 @@ type Context struct {
 	logger                *log.Logger
 	useStringDescriptions bool
 	handlersChain         []HandlerFunc
-	err                   error
+	err                   errors.MultiError
 	execute               interface{}
-	builderTyp            builder.Type
+	builderTyp            system.Type
 	source                interface{}
-	selectionSet          *builder.SelectionSet
+	selectionSet          *system.SelectionSet
 	index                 int8
 }
 
@@ -87,11 +88,11 @@ func (ctx *Context) Source() interface{} {
 	return ctx.source
 }
 
-func (ctx *Context) Typ() builder.Type {
+func (ctx *Context) Typ() system.Type {
 	return ctx.builderTyp
 }
 
-func (ctx *Context) SelectionSet() *builder.SelectionSet {
+func (ctx *Context) SelectionSet() *system.SelectionSet {
 	return ctx.selectionSet
 }
 

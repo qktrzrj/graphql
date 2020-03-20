@@ -1,11 +1,11 @@
-package builder
+package system
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/builder/ast"
-	"github.com/unrotten/graphql/builder/kinds"
-	"github.com/unrotten/graphql/builder/token"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/ast"
+	"github.com/unrotten/graphql/system/kinds"
+	"github.com/unrotten/graphql/system/token"
 	"strconv"
 	"strings"
 	"text/scanner"

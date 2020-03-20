@@ -1,9 +1,10 @@
-package builder
+package system
 
 import (
 	"context"
 	"fmt"
-	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/ast"
 )
 
 // Operation corresponds to GraphQLType
@@ -61,11 +62,12 @@ type Object struct {
 // what fields are in common across all types,
 // as well as a function to determine which type is actually used when the field is resolved.
 type Interface struct {
-	Name          string             `json:"name"`
-	Desc          string             `json:"description"`
-	Fields        map[string]*Field  `json:"fields"`
-	PossibleTypes map[string]*Object `json:"-"`
-	TypeResolve   TypeResolve        `json:"-"`
+	Name          string                `json:"name"`
+	Desc          string                `json:"description"`
+	Fields        map[string]*Field     `json:"fields"`
+	Interfaces    map[string]*Interface `json:"interfaces"`
+	PossibleTypes map[string]*Object    `json:"-"`
+	TypeResolve   TypeResolve           `json:"-"`
 }
 
 // When a field can return one of a heterogeneous set of types,
@@ -190,6 +192,7 @@ type Directive struct {
 	Args    []*Argument            `json:"arguments"`
 	ArgVals map[string]interface{} `json:"-"`
 	Locs    []string               `json:"locations"`
+	Loc     errors.Location
 }
 
 type Document struct {
@@ -217,6 +220,7 @@ type Document struct {
 // Because GraphQL allows multiple fragments with the same name or alias,
 // selections are stored in an array instead of a map.
 type SelectionSet struct {
+	Loc        errors.Location
 	Selections []*Selection
 	Fragments  []*FragmentSpread
 }
@@ -237,6 +241,7 @@ type Selection struct {
 	Args         interface{}
 	SelectionSet *SelectionSet
 	Directives   []*Directive
+	Loc          errors.Location
 
 	UseBatch bool
 
@@ -254,11 +259,13 @@ type FragmentDefinition struct {
 	Name         string
 	On           string
 	SelectionSet *SelectionSet
+	Loc          errors.Location
 }
 
 // FragmentSpread represents a usage of a FragmentDefinition. Alongside the information
 // about the fragment, it includes any directives used at that spread location.
 type FragmentSpread struct {
+	Loc        errors.Location
 	Fragment   *FragmentDefinition
 	Directives []*Directive
 }

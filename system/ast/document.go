@@ -1,8 +1,8 @@
 package ast
 
 import (
-	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/kinds"
 )
 
 // A GraphQL Document describes a complete file or request string operated on by a GraphQL service or client.

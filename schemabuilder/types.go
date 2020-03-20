@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/system/ast"
 	"math"
 	"reflect"
 	"time"
@@ -62,6 +62,7 @@ type Interface struct {
 	Fn            interface{}
 	PossibleTypes map[string]*Object
 	FieldResolve  map[string]*fieldResolve
+	Interface     []*Interface
 }
 
 // Union is a representation of graphql union
@@ -100,8 +101,8 @@ type Directive struct {
 //       return u.FirstName + " " + u.LastName
 //    })
 //
-// An addUser mutation field might take both a context and arguments:
-//    mutation.FieldFunc("addUser", func(ctx context.context, args struct{
+// An addUser Mutation field might take both a context and arguments:
+//    Mutation.FieldFunc("addUser", func(ctx context.context, args struct{
 //        FirstName string
 //        LastName  string
 //    }) (int, error) {
@@ -185,6 +186,20 @@ func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
 
 	resolve := &fieldResolve{Fn: fn, Desc: desc}
 	s.FieldResolve[name] = resolve
+}
+
+// InterfaceFunc exposes a interface on an Interface.
+func (s *Interface) InterfaceFunc(list ...*Interface) {
+	for _, i := range list {
+		interfaceTyp := reflect.TypeOf(i.Type)
+		if interfaceTyp.Kind() == reflect.Ptr {
+			interfaceTyp = interfaceTyp.Elem()
+		}
+		if typ := reflect.TypeOf(s.Type); !typ.Implements(interfaceTyp) && !typ.Elem().Implements(interfaceTyp) {
+			panic(fmt.Sprintf("interface %s must implements interface %s", s.Name, i.Name))
+		}
+		s.Interface = append(s.Interface, i)
+	}
 }
 
 // use to valid type, if not set, will use parseValue
@@ -646,6 +661,29 @@ var Bytes = &Scalar{
 			return nil, errors.New("invalid type expected string")
 		}
 		return base64.StdEncoding.DecodeString(v)
+	},
+}
+
+func any() interface{} {
+	return nil
+}
+
+var AnyScalar = &Scalar{
+	Name: "AnyScalar",
+	Desc: "golang interface type",
+	Type: nil,
+	Serialize: func(value interface{}) (interface{}, error) {
+		return value, nil
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		js := map[string]interface{}{"res": value}
+		marshal, err := json.Marshal(js)
+		if err != nil {
+			return nil, err
+		}
+		res := make(map[string]interface{})
+		err = json.Unmarshal(marshal, &res)
+		return res, err
 	},
 }
 

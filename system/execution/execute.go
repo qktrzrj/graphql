@@ -3,11 +3,11 @@ package execution
 import (
 	"context"
 	"fmt"
-	"github.com/unrotten/graphql/builder"
-	"github.com/unrotten/graphql/builder/ast"
-	"github.com/unrotten/graphql/builder/validation"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
+	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/ast"
+	"github.com/unrotten/graphql/system/validation"
 	"reflect"
 	"runtime"
 	"strings"
@@ -19,8 +19,25 @@ type Executor struct {
 
 type computationOutput struct {
 	Function  interface{}
-	Field     *builder.Field
+	Field     *system.Field
 	Selection *ast.Selection
+}
+
+type exeContext struct {
+	context.Context
+	errs []*errors.GraphQLError
+	path []interface{}
+}
+
+func (e *exeContext) addErr(location errors.Location, err error) {
+	e.errs = append(e.errs, &errors.GraphQLError{
+		ResolverError: err,
+		Locations:     []errors.Location{location},
+		Path:          e.path,
+	})
+	if len(e.path) > 0 {
+		e.path = append([]interface{}{}, e.path[:len(e.path)-1]...)
+	}
 }
 
 type Params struct {
@@ -32,16 +49,17 @@ type Params struct {
 
 var ErrNoUpdate = errors.New("no update")
 
-func Do(schema *builder.Schema, param Params) (interface{}, error) {
+func Do(schema *system.Schema, param Params, valid ...bool) (interface{}, error) {
 
-	doc, err := builder.Parse(param.Query)
+	doc, err := system.Parse(param.Query)
 	if err != nil {
 		return nil, fmt.Errorf(err.Error())
 	}
-
-	errs := validation.Validate(schema, doc, param.Variables, 50)
-	if len(errs) > 0 {
-		return nil, fmt.Errorf("%v", errs)
+	if len(valid) == 0 || (len(valid) > 0 && valid[0]) {
+		errs := validation.Validate(schema, doc, param.Variables, 50)
+		if len(errs) > 0 {
+			return nil, fmt.Errorf("%v", errs)
+		}
 	}
 
 	selectionSet, err := ApplySelectionSet(doc, param.OperationName, param.Variables)
@@ -60,42 +78,50 @@ func Do(schema *builder.Schema, param Params) (interface{}, error) {
 	return executor.Execute(ctx, root, nil, selectionSet)
 }
 
-func (e *Executor) Execute(ctx context.Context, typ builder.Type, source interface{},
-	selectionSet *builder.SelectionSet) (interface{}, error) {
-	response, err := e.execute(ctx, typ, source, selectionSet)
+func (e *Executor) Execute(ctx context.Context, typ system.Type, source interface{},
+	selectionSet *system.SelectionSet) (interface{}, errors.MultiError) {
+	exeCtx := &exeContext{Context: ctx}
+	response, err := e.execute(exeCtx, typ, source, selectionSet)
 	if err != nil {
-		return nil, err
+		exeCtx.addErr(selectionSet.Loc, err)
 	}
-	return response, nil
+	return response, exeCtx.errs
 }
 
-func (e *Executor) execute(ctx context.Context, typ builder.Type, source interface{},
-	selectionSet *builder.SelectionSet) (interface{}, error) {
+func (e *Executor) execute(ctx *exeContext, typ system.Type, source interface{},
+	selectionSet *system.SelectionSet) (interface{}, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	switch typ := typ.(type) {
-	case *builder.Scalar:
-		if typ.ParseValue != nil {
-			return typ.ParseValue(source)
+	case *system.Scalar:
+		if typ.Serialize != nil {
+			return typ.Serialize(source)
 		}
 		return unwrap(source), nil
-	case *builder.Enum:
+	case *system.Enum:
 		val := unwrap(source)
 		if mapVal, ok := typ.Map[val]; ok {
 			return mapVal, nil
 		}
 		return nil, errors.New("enum is not valid")
-	case *builder.Union:
+	case *system.Union:
 		return e.executeUnion(ctx, typ, source, selectionSet)
-	case *builder.Interface:
+	case *system.Interface:
 		return e.executeInterface(ctx, typ, source, selectionSet)
-	case *builder.Object:
+	case *system.Object:
 		return e.executeObject(ctx, typ, source, selectionSet)
-	case *builder.List:
+	case *system.List:
 		return e.executeList(ctx, typ, source, selectionSet)
-	case *builder.NonNull:
-		return e.execute(ctx, typ.Type, source, selectionSet)
+	case *system.NonNull:
+		result, err := e.execute(ctx, typ.Type, source, selectionSet)
+		if err != nil {
+			return nil, err
+		}
+		if result == nil {
+			return nil, fmt.Errorf("cannot return null for non-nullable field %v", typ.Type)
+		}
+		return result, nil
 	default:
 		panic(typ)
 	}
@@ -113,20 +139,14 @@ func unwrap(v interface{}) interface{} {
 	return i.Interface()
 }
 
-func (e *Executor) executeUnion(ctx context.Context, typ *builder.Union, source interface{},
-	selectionSet *builder.SelectionSet) (interface{}, error) {
+func (e *Executor) executeUnion(ctx *exeContext, typ *system.Union, source interface{},
+	selectionSet *system.SelectionSet) (interface{}, error) {
 	value := reflect.ValueOf(source)
 	if value.Kind() == reflect.Ptr && value.IsNil() {
 		return nil, nil
 	}
 
 	fields := make(map[string]interface{})
-	for _, selection := range selectionSet.Selections {
-		if selection.Name == "__typename" {
-			fields[selection.Alias] = typ.Name
-			continue
-		}
-	}
 
 	var possibleTypes []string
 	for typString, graphqlTyp := range typ.Types {
@@ -140,20 +160,43 @@ func (e *Executor) executeUnion(ctx context.Context, typ *builder.Union, source 
 		}
 		possibleTypes = append(possibleTypes, graphqlTyp.String())
 
-		for _, fragment := range selectionSet.Fragments {
-			if fragment.Fragment.On != typString {
+		for _, selection := range selectionSet.Selections {
+			if selection.Name == "__typename" {
+				fields[selection.Alias] = graphqlTyp.Name
 				continue
+			}
+			field := graphqlTyp.Fields[selection.Name]
+			if field != nil {
+				resolved, err := e.resolveAndExecute(ctx, field, inner.Interface(), selection)
+				if err != nil {
+					ctx.addErr(selection.Loc, err)
+					fields[selection.Alias] = nil
+					continue
+				}
+				fields[selection.Alias] = resolved
+			}
+			if len(ctx.path) > 0 {
+				ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+			}
+		}
+
+		for _, fragment := range selectionSet.Fragments {
+			if fragment.Fragment.On != typString && fragment.Fragment.On != typ.Name {
+				if _, ok := graphqlTyp.Interfaces[fragment.Fragment.On]; !ok {
+					continue
+				}
 			}
 			resolved, err := e.executeObject(ctx, graphqlTyp, inner.Interface(), fragment.Fragment.SelectionSet)
 			if err != nil {
-				if err == ErrNoUpdate {
-					return nil, err
-				}
-				return nil, err
+				ctx.addErr(fragment.Loc, err)
+				continue
 			}
 
 			for k, v := range resolved.(map[string]interface{}) {
 				fields[k] = v
+			}
+			if len(ctx.path) > 0 {
+				ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
 			}
 		}
 	}
@@ -164,8 +207,8 @@ func (e *Executor) executeUnion(ctx context.Context, typ *builder.Union, source 
 	return fields, nil
 }
 
-func (e *Executor) executeObject(ctx context.Context, typ *builder.Object, source interface{},
-	selectionSet *builder.SelectionSet) (interface{}, error) {
+func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source interface{},
+	selectionSet *system.SelectionSet) (interface{}, error) {
 	value := reflect.ValueOf(source)
 	if value.Kind() == reflect.Ptr && value.IsNil() {
 		return nil, nil
@@ -180,11 +223,13 @@ func (e *Executor) executeObject(ctx context.Context, typ *builder.Object, sourc
 
 	// for every selection, resolve the value and store it in the output object
 	for _, selection := range selections {
+		ctx.path = append(ctx.path, selection.Alias)
 		if ok, err := shouldIncludeNode(selection.Directives); err != nil {
-			if err == ErrNoUpdate {
-				return nil, err
-			}
-			return nil, err
+			//if err == ErrNoUpdate {
+			//	return nil, err
+			//}
+			ctx.addErr(selectionSet.Loc, err)
+			continue
 		} else if !ok {
 			continue
 		}
@@ -195,22 +240,30 @@ func (e *Executor) executeObject(ctx context.Context, typ *builder.Object, sourc
 		}
 
 		field := typ.Fields[selection.Name]
+		if field == nil {
+			if len(ctx.path) > 0 {
+				ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+			}
+			continue
+		}
 		resolved, err := e.resolveAndExecute(ctx, field, source, selection)
 		if err != nil {
-			if err == ErrNoUpdate {
-				return nil, err
-			}
-			return nil, err
+			ctx.addErr(selection.Loc, err)
+			fields[selection.Alias] = nil
+			continue
 		}
 		fields[selection.Alias] = resolved
+		if len(ctx.path) > 0 {
+			ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+		}
 	}
 
 	return fields, nil
 }
 
-func (e *Executor) resolveAndExecute(ctx context.Context, field *builder.Field, source interface{},
-	selection *builder.Selection) (interface{}, error) {
-	value, err := safeExecuteResolver(ctx, field, source, selection.Args)
+func (e *Executor) resolveAndExecute(ctx *exeContext, field *system.Field, source interface{},
+	selection *system.Selection) (interface{}, error) {
+	value, err := safeExecuteResolver(ctx.Context, field, source, selection.Args)
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +271,7 @@ func (e *Executor) resolveAndExecute(ctx context.Context, field *builder.Field, 
 	return e.execute(ctx, field.Type, value, selection.SelectionSet)
 }
 
-func safeExecuteResolver(ctx context.Context, field *builder.Field, source, args interface{}) (result interface{}, err error) {
+func safeExecuteResolver(ctx context.Context, field *system.Field, source, args interface{}) (result interface{}, err error) {
 	defer func() {
 		if panicErr := recover(); panicErr != nil {
 			const size = 64 << 10
@@ -236,13 +289,11 @@ func safeExecuteResolver(ctx context.Context, field *builder.Field, source, args
 	return field.Resolve(ctx, source, args)
 }
 
-var emptyList = []interface{}{}
-
 // executeList executes a set query
-func (e *Executor) executeList(ctx context.Context, typ *builder.List, source interface{},
-	selectionSet *builder.SelectionSet) (interface{}, error) {
+func (e *Executor) executeList(ctx *exeContext, typ *system.List, source interface{},
+	selectionSet *system.SelectionSet) (interface{}, error) {
 	if reflect.ValueOf(source).IsNil() {
-		return emptyList, nil
+		return nil, nil
 	}
 
 	// iterate over arbitrary slice types using reflect
@@ -266,14 +317,14 @@ func (e *Executor) executeList(ctx context.Context, typ *builder.List, source in
 }
 
 // executeInterface resolves an interface query
-func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface, source interface{},
-	selectionSet *builder.SelectionSet) (interface{}, error) {
+func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, source interface{},
+	selectionSet *system.SelectionSet) (interface{}, error) {
 	value := reflect.ValueOf(source)
 	if value.Kind() == reflect.Ptr && value.IsNil() {
 		return nil, nil
 	}
 	fields := make(map[string]interface{})
-	var object *builder.Object
+	var object *system.Object
 	if typ.TypeResolve != nil {
 		object = typ.TypeResolve(ctx, source)
 	} else {
@@ -299,12 +350,14 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 	typString, graphqlTyp := object.Name, object
 
 	// modifiedSelectionSet selection set contains fragments on typString
-	modifiedSelectionSet := &builder.SelectionSet{
+	modifiedSelectionSet := &system.SelectionSet{
 		Selections: selectionSet.Selections,
-		Fragments:  []*builder.FragmentSpread{},
+		Fragments:  []*system.FragmentSpread{},
 	}
 	for _, f := range selectionSet.Fragments {
 		if f.Fragment.On == typString {
+			modifiedSelectionSet.Fragments = append(modifiedSelectionSet.Fragments, f)
+		} else if _, ok := graphqlTyp.Interfaces[f.Fragment.On]; ok {
 			modifiedSelectionSet.Fragments = append(modifiedSelectionSet.Fragments, f)
 		}
 	}
@@ -319,6 +372,7 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 			fields[selection.Alias] = graphqlTyp.Name
 			continue
 		}
+		ctx.path = append(ctx.path, selection.Name)
 		field, ok := typ.Fields[selection.Name]
 		if !ok {
 			field, ok = graphqlTyp.Fields[selection.Name]
@@ -329,18 +383,20 @@ func (e *Executor) executeInterface(ctx context.Context, typ *builder.Interface,
 
 		resolved, err := e.resolveAndExecute(ctx, field, source, selection)
 		if err != nil {
-			if err == ErrNoUpdate {
-				return nil, err
-			}
-			return nil, err
+			ctx.addErr(selection.Loc, err)
+			fields[selection.Alias] = nil
+			continue
 		}
 		fields[selection.Alias] = resolved
+		if len(ctx.path) > 0 {
+			ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+		}
 	}
 
 	return fields, nil
 }
 
-func findDirectiveWithName(directives []*builder.Directive, name string) *builder.Directive {
+func findDirectiveWithName(directives []*system.Directive, name string) *system.Directive {
 	for _, directive := range directives {
 		if directive.Name == name {
 			return directive
@@ -349,8 +405,8 @@ func findDirectiveWithName(directives []*builder.Directive, name string) *builde
 	return nil
 }
 
-func shouldIncludeNode(directives []*builder.Directive) (bool, error) {
-	parseIf := func(d *builder.Directive) (bool, error) {
+func shouldIncludeNode(directives []*system.Directive) (bool, error) {
+	parseIf := func(d *system.Directive) (bool, error) {
 		args := d.ArgVals
 		if args["if"] == nil {
 			return false, fmt.Errorf("required argument not provided: if")

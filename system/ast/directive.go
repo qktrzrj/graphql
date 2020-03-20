@@ -1,8 +1,8 @@
 package ast
 
 import (
-	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/kinds"
 )
 
 // Directives provide a way to describe alternate runtime execution and type validation behavior in a GraphQL document.

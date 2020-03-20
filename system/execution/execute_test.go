@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/stretchr/testify/assert"
@@ -486,7 +487,152 @@ func TestExecutor_Execute(t *testing.T) {
 			assert.NoError(t, err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
-			assert.JSONEq(t, `{"a":"rootValue"}`, string(marshal))
+			assert.JSONEq(t, `{
+	"Data": {
+		"a": "Apple",
+		"b": "Banana",
+		"d": "Donut",
+		"deep": {
+			"a": "Already Been Done",
+			"b": "Boring",
+			"c": ["Contrived", "", "Confusing"],
+			"deeper": [{
+				"a": "Apple",
+				"b": "Banana"
+			}, null, {
+				"a": "Apple",
+				"b": "Banana"
+			}]
+		},
+		"e": "Egg",
+		"f": "Fish",
+		"pic": "Pic of size 100",
+		"promise": {
+			"a": "Apple"
+		},
+		"x": "Cookie"
+	}
+}`, string(marshal))
+		})
+
+		t.Run("merges parallel fragments", func(t *testing.T) {
+			build := schemabuilder.NewSchema()
+			build.Query().FieldFunc("a", func() string { return "Apple" }, "")
+			build.Query().FieldFunc("b", func() string { return "Banana" }, "")
+			build.Query().FieldFunc("c", func() string { return "Cherry" }, "")
+			build.Query().FieldFunc("deep", func() schemabuilder.Query { return schemabuilder.Query{} }, "")
+			schema := build.MustBuild()
+			result, err := Do(schema, Params{Query: `
+      { a, ...FragOne, ...FragTwo }
+
+      fragment FragOne on Query {
+        b
+        deep { b, deeper: deep { b } }
+      }
+
+      fragment FragTwo on Query {
+        c
+        deep { c, deeper: deep { c } }
+      }
+    `})
+			assert.NoError(t, err)
+			marshal, err := json.Marshal(result)
+			assert.NoError(t, err)
+			assert.JSONEq(t, `{
+	"a": "Apple",
+	"b": "Banana",
+	"c": "Cherry",
+	"deep": {
+		"b": "Banana",
+		"c": "Cherry",
+		"deeper": {
+			"b": "Banana",
+			"c": "Cherry"
+		}
+	}
+}`, string(marshal))
+		})
+
+		t.Run("correctly threads arguments", func(t *testing.T) {
+			var resolvedArgs interface{}
+			build := schemabuilder.NewSchema()
+			build.Query().FieldFunc("b", func(args struct {
+				NumArg    int    `graphql:"numArg"`
+				StringArg string `graphql:"stringArg"`
+			}) string {
+				resolvedArgs = args
+				return ""
+			}, "")
+			schema := build.MustBuild()
+			_, err := Do(schema, Params{Query: `
+      query Example {
+        b(numArg: 123, stringArg: "foo")
+      }
+    `})
+			assert.NoError(t, err)
+			assert.Equal(t, struct {
+				NumArg    int    `graphql:"numArg"`
+				StringArg string `graphql:"stringArg"`
+			}{NumArg: 123, StringArg: "foo"}, resolvedArgs)
 		})
 	})
+
+	t.Run("Execute: Accepts any iterable as list value", func(t *testing.T) {
+		t.Run("Accepts a Set as a List value", func(t *testing.T) {
+			testData := []string{"apple", "banana", "apple", "coconut"}
+			check(t, func() []string { return testData }, testData, map[string]interface{}{
+				"nest": map[string]interface{}{
+					"test": []interface{}{"apple", "banana", "apple", "coconut"},
+				},
+			})
+		})
+
+		t.Run("Accepts an Generator function as a List value", func(t *testing.T) {
+			testData := []interface{}{"one", 2, true}
+			check(t, func() []interface{} { return testData }, testData, map[string]interface{}{
+				"nest": map[string]interface{}{
+					"test": []interface{}{"one", 2, true},
+				},
+			})
+		})
+	})
+
+	t.Run("Execute: Handles list nullability", func(t *testing.T) {
+		t.Run("[T]", func(t *testing.T) {
+			type rty []int
+			t.Run("Array<T>", func(t *testing.T) {
+				t.Run("Contains values", func(t *testing.T) {
+					testData := rty{1, 2}
+					check(t, func() rty { return testData }, testData, map[string]interface{}{
+						"nest": map[string]interface{}{
+							"test": []interface{}{1, 2},
+						},
+					})
+				})
+
+				t.Run("Returns null", func(t *testing.T) {
+					check(t, func() rty { return nil }, nil, map[string]interface{}{
+						"nest": map[string]interface{}{
+							"test": nil,
+						},
+					})
+				})
+			})
+		})
+	})
+}
+
+func check(t *testing.T, testType interface{}, testData interface{}, expected interface{}) {
+	build := schemabuilder.NewSchema()
+	build.Query().FieldFunc("test", testType, "")
+	build.Query().FieldFunc("nest", func() schemabuilder.Query { return schemabuilder.Query{} }, "")
+	schema := build.MustBuild()
+	result, err := Do(schema, Params{
+		Query:         "{ nest { test } }",
+		OperationName: "",
+		Variables:     nil,
+		Context:       context.WithValue(context.Background(), "test", testData),
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, expected, result)
 }

@@ -1,8 +1,8 @@
 package ast
 
 import (
-	"github.com/unrotten/graphql/builder/kinds"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system/kinds"
 )
 
 // A GraphQL query can be parameterized with variables, maximizing query reuse,

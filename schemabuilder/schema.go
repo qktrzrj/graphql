@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/unrotten/graphql/builder"
-	"github.com/unrotten/graphql/builder/ast"
+	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/ast"
 	"reflect"
 	"strconv"
 )
@@ -135,7 +135,7 @@ func (s *Schema) Object(name string, typ interface{}, desc string) *Object {
 	return object
 }
 
-// InputObject registers a struct as inout object which can be passed as an argument to a query or mutation
+// InputObject registers a struct as inout object which can be passed as an argument to a Query or Mutation
 // We'll read through the fields of the struct and create argument parsers to fill the data from graphQL JSON input
 func (s *Schema) InputObject(name string, typ interface{}, desc string) *InputObject {
 	if inputObject, ok := s.inputObjects[name]; ok {
@@ -281,7 +281,7 @@ func (s *Schema) Union(name string, union interface{}, desc string) {
 }
 
 // Interface registers a Interface as a GraphQL Interface in our Schema.
-func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc string) *Interface {
+func (s *Schema) Interface(name string, typ interface{}, typeResolve interface{}, desc string) *Interface {
 	if typ == nil {
 		panic("nil type passed to Interface")
 	}
@@ -302,7 +302,7 @@ func (s *Schema) Interface(name string, typ interface{}, fn interface{}, desc st
 		Name:          name,
 		Desc:          desc,
 		Type:          typ,
-		Fn:            fn,
+		Fn:            typeResolve,
 		PossibleTypes: map[string]*Object{},
 	}
 	return s.interfaces[name]
@@ -333,20 +333,20 @@ func (s *Schema) GetInterface(name string) *Interface {
 	return s.interfaces[name]
 }
 
-type query struct{}
+type Query struct{}
 
 // Query returns an Object struct that we can use to register all the top level
-// graphql query functions we'd like to expose.
+// graphql Query functions we'd like to expose.
 func (s *Schema) Query() *Object {
-	return s.Object("Query", query{}, "")
+	return s.Object("Query", Query{}, "")
 }
 
-type mutation struct{}
+type Mutation struct{}
 
 // Mutation returns an Object struct that we can use to register all the top level
 // graphql mutations functions we'd like to expose.
 func (s *Schema) Mutation() *Object {
-	return s.Object("Mutation", mutation{}, "")
+	return s.Object("Mutation", Mutation{}, "")
 }
 
 type Subscription struct {
@@ -362,12 +362,12 @@ func (s *Schema) Subscription() *Object {
 // Build takes the schema we have built on our Query, Mutation and Subscription starting points and builds a full graphql.Schema
 // We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
-func (s *Schema) Build() (*builder.Schema, error) {
+func (s *Schema) Build() (*system.Schema, error) {
 	s.Query()
 	s.Mutation()
 	s.Subscription()
 	sb := &schemaBuilder{
-		types:        make(map[reflect.Type]builder.Type),
+		types:        make(map[reflect.Type]system.Type),
 		objects:      make(map[reflect.Type]*Object, len(s.objects)),
 		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
 		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
@@ -376,7 +376,7 @@ func (s *Schema) Build() (*builder.Schema, error) {
 		unions:       make(map[reflect.Type]*Union, len(s.unions)),
 	}
 
-	directives := make(map[string]*builder.Directive, len(s.directives))
+	directives := make(map[string]*system.Directive, len(s.directives))
 
 	for _, object := range s.objects {
 		typ := reflect.TypeOf(object.Type)
@@ -431,7 +431,11 @@ func (s *Schema) Build() (*builder.Schema, error) {
 		sb.interfaces[typ] = inter
 	}
 
-	for _, scalar := range s.scalars {
+	for name, scalar := range s.scalars {
+		if name == "AnyScalar" {
+			sb.scalars[reflect.TypeOf(any).Out(0)] = scalar
+			continue
+		}
 		typ := reflect.TypeOf(scalar.Type)
 		if _, ok := sb.scalars[typ]; ok {
 			return nil, fmt.Errorf("duplicate scalar for %s", typ.String())
@@ -449,11 +453,11 @@ func (s *Schema) Build() (*builder.Schema, error) {
 		}
 		sb.unions[typ] = union
 	}
-	queryTyp, err := sb.getType(reflect.TypeOf(&query{}))
+	queryTyp, err := sb.getType(reflect.TypeOf(&Query{}))
 	if err != nil {
 		return nil, err
 	}
-	mutationTyp, err := sb.getType(reflect.TypeOf(&mutation{}))
+	mutationTyp, err := sb.getType(reflect.TypeOf(&Mutation{}))
 	if err != nil {
 		return nil, err
 	}
@@ -461,14 +465,14 @@ func (s *Schema) Build() (*builder.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	typeMap := make(map[string]builder.NamedType, len(sb.types))
+	typeMap := make(map[string]system.NamedType, len(sb.types))
 	for _, t := range sb.types {
-		if named, ok := t.(builder.NamedType); ok {
+		if named, ok := t.(system.NamedType); ok {
 			typeMap[named.TypeName()] = named
 		}
 	}
 	for name, dir := range s.directives {
-		var args []*builder.Argument
+		var args []*system.Argument
 		if dir.Type != nil {
 			if _, a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
 				for _, arg := range a {
@@ -481,14 +485,14 @@ func (s *Schema) Build() (*builder.Schema, error) {
 				return nil, err
 			}
 		}
-		directives[name] = &builder.Directive{
+		directives[name] = &system.Directive{
 			Name: dir.Name,
 			Desc: dir.Desc,
 			Args: args,
 			Locs: dir.Locs,
 		}
 	}
-	return &builder.Schema{
+	return &system.Schema{
 		TypeMap:      typeMap,
 		Query:        queryTyp,
 		Mutation:     mutationTyp,
@@ -498,7 +502,7 @@ func (s *Schema) Build() (*builder.Schema, error) {
 }
 
 //MustBuild builds a schema and panics if an error occurs.
-func (s *Schema) MustBuild() *builder.Schema {
+func (s *Schema) MustBuild() *system.Schema {
 	built, err := s.Build()
 	if err != nil {
 		panic(err)

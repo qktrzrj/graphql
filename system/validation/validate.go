@@ -2,11 +2,11 @@ package validation
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/builder"
-	"github.com/unrotten/graphql/builder/ast"
-	"github.com/unrotten/graphql/builder/kinds"
-	"github.com/unrotten/graphql/builder/utils"
 	"github.com/unrotten/graphql/errors"
+	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/ast"
+	"github.com/unrotten/graphql/system/kinds"
+	"github.com/unrotten/graphql/system/utils"
 	"math"
 	"reflect"
 	"strconv"
@@ -18,13 +18,13 @@ type varSet map[*ast.VariableDefinition]struct{}
 type selectionPair struct{ a, b ast.Selection }
 
 type fieldInfo struct {
-	sf     *builder.Field
-	parent builder.NamedType
+	sf     *system.Field
+	parent system.NamedType
 }
 
 type context struct {
-	schema           *builder.Schema
-	doc              *builder.Document
+	schema           *system.Schema
+	doc              *system.Document
 	errs             []*errors.GraphQLError
 	opErrs           map[*ast.OperationDefinition][]*errors.GraphQLError
 	usedVars         map[*ast.OperationDefinition]varSet
@@ -52,7 +52,7 @@ type opContext struct {
 	ops []*ast.OperationDefinition
 }
 
-func newContext(s *builder.Schema, doc *builder.Document, maxDepth int) *context {
+func newContext(s *system.Schema, doc *system.Document, maxDepth int) *context {
 	return &context{
 		schema:           s,
 		doc:              doc,
@@ -65,7 +65,7 @@ func newContext(s *builder.Schema, doc *builder.Document, maxDepth int) *context
 	}
 }
 
-func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interface{}, maxDepth int) []*errors.GraphQLError {
+func Validate(s *system.Schema, doc *system.Document, vars map[string]interface{}, maxDepth int) []*errors.GraphQLError {
 	if doc == nil {
 		return []*errors.GraphQLError{errors.New("Must provide document")}
 	}
@@ -108,7 +108,7 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 
 			vTyp := utils.TypeFromAst(s, v.Type)
 			variableName := v.Var.Name.Name
-			if vTyp != nil && !builder.IsInputType(vTyp) {
+			if vTyp != nil && !system.IsInputType(vTyp) {
 				typeName := v.Type.String()
 				ctx.addErr(v.Loc, "Variables Are Input Types", `Variable "$%s" cannot be non-input type "%s".`, variableName, typeName)
 			}
@@ -117,10 +117,10 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 				validateLiteral(opc, v.DefaultValue)
 
 				if vTyp != nil {
-					if nn, ok := vTyp.(*builder.NonNull); ok {
+					if nn, ok := vTyp.(*system.NonNull); ok {
 						ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", "Variable %q of type %q is required and will not use the default value. Perhaps you meant to use type %q.", "$"+v.Var.Name.Name, vTyp, nn.Type)
 					} else if vars[variableName] == nil {
-						value, err := builder.ValueToJson(v.DefaultValue, nil)
+						value, err := system.ValueToJson(v.DefaultValue, nil)
 						if err != nil {
 							ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", err.Error())
 						} else {
@@ -137,14 +137,14 @@ func Validate(s *builder.Schema, doc *builder.Document, vars map[string]interfac
 			validateValue(opc, v, vars[v.Var.Name.Name], vTyp)
 		}
 
-		var obj *builder.Object
+		var obj *system.Object
 		switch op.Operation {
 		case ast.Query:
-			obj = s.Query.(*builder.Object)
+			obj = s.Query.(*system.Object)
 		case ast.Mutation:
-			obj = s.Mutation.(*builder.Object)
+			obj = s.Mutation.(*system.Object)
 		case ast.Subscription:
-			obj = s.Subscription.(*builder.Object)
+			obj = s.Subscription.(*system.Object)
 		default:
 			panic("unreachable")
 		}
@@ -219,7 +219,7 @@ func validateNameCustomMsg(c *context, set nameSet, name *ast.Name, rule string,
 	set[name.Name] = name.Loc
 }
 
-func validateSelectionSet(c *opContext, sels *ast.SelectionSet, t builder.NamedType) {
+func validateSelectionSet(c *opContext, sels *ast.SelectionSet, t system.NamedType) {
 	if sels != nil {
 		for _, sel := range sels.Selections {
 			validateSelection(c, sel, t)
@@ -233,31 +233,31 @@ func validateSelectionSet(c *opContext, sels *ast.SelectionSet, t builder.NamedT
 	}
 }
 
-func validateSelection(c *opContext, sel ast.Selection, t builder.NamedType) {
+func validateSelection(c *opContext, sel ast.Selection, t system.NamedType) {
 	switch sel := sel.(type) {
 	case *ast.Field:
 		validateDirectives(c, "FIELD", sel.Directives)
 
 		fieldName := sel.Name.Name
-		var f *builder.Field
+		var f *system.Field
 		switch fieldName {
 		case "__typename":
-			f = &builder.Field{
+			f = &system.Field{
 				Name: "__typename",
 				Type: c.schema.TypeMap["String"],
 			}
 		case "__schema":
-			f = &builder.Field{
+			f = &system.Field{
 				Name: "__schema",
 				Type: c.schema.TypeMap["__Schema"],
 			}
 		case "__type":
-			f = &builder.Field{
+			f = &system.Field{
 				Name: "__type",
-				Args: map[string]*builder.Argument{
+				Args: map[string]*system.Argument{
 					"name": {
 						Name: "name",
-						Type: &builder.NonNull{Type: c.schema.TypeMap["String"]},
+						Type: &system.NonNull{Type: c.schema.TypeMap["String"]},
 					},
 				},
 				Type: c.schema.TypeMap["__Type"],
@@ -283,7 +283,7 @@ func validateSelection(c *opContext, sel ast.Selection, t builder.NamedType) {
 			)
 		}
 
-		var ft builder.Type
+		var ft system.Type
 		if f != nil {
 			ft = f.Type
 			sf := hasSubfields(ft)
@@ -522,15 +522,15 @@ func detectFragmentCycleSel(c *context, sel ast.Selection, fragVisited map[*ast.
 	}
 }
 
-func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, vtyp builder.Type) {
+func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, vtyp system.Type) {
 	switch vtyp := vtyp.(type) {
-	case *builder.NonNull:
+	case *system.NonNull:
 		if val == nil {
 			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value null.\nExpected type \"%s\", found null.", v.Var.Name.Name, vtyp)
 			return
 		}
 		validateValue(ctx, v, val, vtyp.Type)
-	case *builder.List:
+	case *system.List:
 		if vtyp == nil {
 			return
 		}
@@ -541,7 +541,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 		for _, vi := range vv {
 			validateValue(ctx, v, vi, vtyp.Type)
 		}
-	case *builder.Enum:
+	case *system.Enum:
 		if val == nil {
 			return
 		}
@@ -556,7 +556,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 			}
 		}
 		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", v.Var.Name.Name, e, vtyp, e)
-	case *builder.InputObject:
+	case *system.InputObject:
 		if val == nil {
 			return
 		}
@@ -647,13 +647,13 @@ func validateLiteral(c *opContext, l ast.Value) {
 	}
 }
 
-func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string) {
+func validateValueType(c *opContext, v ast.Value, t system.Type) (bool, string) {
 	if v, ok := v.(*ast.Variable); ok {
 		for _, op := range c.ops {
 			if v2 := utils.GetVar(op.Vars, v.Name); v2 != nil {
 				t2 := utils.TypeFromAst(c.schema, v2.Type)
-				if _, ok := t2.(*builder.NonNull); !ok && v2.DefaultValue != nil {
-					t2 = &builder.NonNull{Type: t2}
+				if _, ok := t2.(*system.NonNull); !ok && v2.DefaultValue != nil {
+					t2 = &system.NonNull{Type: t2}
 				}
 				if !typeCanBeUsedAs(t2, t) {
 					c.addErrMultiLoc([]errors.Location{v2.Loc, v.Loc}, "VariablesInAllowedPosition", "Variable %q of type %q used in position expecting type %q.", "$"+v.Name.Name, t2, t)
@@ -663,7 +663,7 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 		return true, ""
 	}
 
-	if nn, ok := t.(*builder.NonNull); ok {
+	if nn, ok := t.(*system.NonNull); ok {
 		if isNull(v) {
 			return false, fmt.Sprintf("Expected %q, found null.", t)
 		}
@@ -674,11 +674,11 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 	}
 
 	switch t := t.(type) {
-	case *builder.Scalar, *builder.Enum:
+	case *system.Scalar, *system.Enum:
 		if validateBasicValue(c, v, t) {
 			return true, ""
 		}
-	case *builder.List:
+	case *system.List:
 		list, ok := v.(*ast.ListValue)
 		if !ok {
 			return validateValueType(c, v, t.Type) // single value instead of list
@@ -690,7 +690,7 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 		}
 		return true, ""
 
-	case *builder.InputObject:
+	case *system.InputObject:
 		v, ok := v.(*ast.ObjectValue)
 		if !ok {
 			return false, fmt.Sprintf("Expected %q, found not an object.", t)
@@ -714,7 +714,7 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 				}
 			}
 			if !found {
-				if _, ok := iv.Type.(*builder.NonNull); ok && iv.DefaultValue == nil {
+				if _, ok := iv.Type.(*system.NonNull); ok && iv.DefaultValue == nil {
 					return false, fmt.Sprintf("In field %q: Expected %q, found null.", iv.Name, iv.Type)
 				}
 			}
@@ -725,9 +725,9 @@ func validateValueType(c *opContext, v ast.Value, t builder.Type) (bool, string)
 	return false, fmt.Sprintf("Expected type %q, found %s.", t, v)
 }
 
-func validateBasicValue(ctx *opContext, v ast.Value, t builder.Type) bool {
+func validateBasicValue(ctx *opContext, v ast.Value, t system.Type) bool {
 	switch t := t.(type) {
-	case *builder.Scalar:
+	case *system.Scalar:
 		switch t.Name {
 		case "Int", "Int32":
 			if v.GetKind() != kinds.IntValue {
@@ -832,7 +832,7 @@ func validateBasicValue(ctx *opContext, v ast.Value, t builder.Type) bool {
 			return true
 		}
 
-	case *builder.Enum:
+	case *system.Enum:
 		if v.GetKind() != kinds.EnumValue {
 			return false
 		}
@@ -889,7 +889,7 @@ func validateArgumentLiterals(c *opContext, args []*ast.Argument) {
 	}
 }
 
-func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*builder.Argument, loc errors.Location, owner1, owner2 func() string) {
+func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*system.Argument, loc errors.Location, owner1, owner2 func() string) {
 	for _, selArg := range args {
 		arg := utils.GetArgumentType(argDecls, selArg.Name.Name)
 		if arg == nil {
@@ -898,11 +898,11 @@ func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*build
 		}
 		value := selArg.Value
 		if ok, reason := validateValueType(c, value, arg.Type); !ok {
-			c.addErr(value.Location(), "ArgumentsOfCorrectType", "Argument %q has invalid value %s.\n%s", arg.Name, value, reason)
+			c.addErr(value.Location(), "ArgumentsOfCorrectType", "Argument %q has invalid value %s.\n%s", arg.Name, value.GetValue(), reason)
 		}
 	}
 	for _, decl := range argDecls {
-		if _, ok := decl.Type.(*builder.NonNull); ok {
+		if _, ok := decl.Type.(*system.NonNull); ok {
 			if argNodes := utils.GetArgumentNode(args, decl.Name); argNodes == nil {
 				c.addErr(loc, "ProvidedNonNullArguments", "%s argument %q of type %q is required but not provided.", owner2(), decl.Name, decl.Type)
 			}
@@ -916,8 +916,8 @@ func argumentsConflict(a, b []*ast.Argument) bool {
 	}
 	for _, argA := range a {
 		valB := utils.GetArgumentNode(b, argA.Name.Name)
-		valueA, _ := builder.ValueToJson(argA.Value, nil)
-		valueB, _ := builder.ValueToJson(valB.Value, nil)
+		valueA, _ := system.ValueToJson(argA.Value, nil)
+		valueB, _ := system.ValueToJson(valB.Value, nil)
 		if valB == nil || !reflect.DeepEqual(valueA, valueB) {
 			return true
 		}
@@ -925,9 +925,9 @@ func argumentsConflict(a, b []*ast.Argument) bool {
 	return false
 }
 
-func isLeaf(t builder.Type) bool {
+func isLeaf(t system.Type) bool {
 	switch t.(type) {
-	case *builder.Scalar, *builder.Enum:
+	case *system.Scalar, *system.Enum:
 		return true
 	default:
 		return false
@@ -939,13 +939,13 @@ func isNull(lit interface{}) bool {
 	return ok
 }
 
-func typeCanBeUsedAs(t, as builder.Type) bool {
-	nnT, okT := t.(*builder.NonNull)
+func typeCanBeUsedAs(t, as system.Type) bool {
+	nnT, okT := t.(*system.NonNull)
 	if okT {
 		t = nnT.Type
 	}
 
-	nnAs, okAs := as.(*builder.NonNull)
+	nnAs, okAs := as.(*system.NonNull)
 	if okAs {
 		as = nnAs.Type
 		if !okT {
@@ -957,49 +957,49 @@ func typeCanBeUsedAs(t, as builder.Type) bool {
 		return true
 	}
 
-	if lT, ok := t.(*builder.List); ok {
-		if lAs, ok := as.(*builder.List); ok {
+	if lT, ok := t.(*system.List); ok {
+		if lAs, ok := as.(*system.List); ok {
 			return typeCanBeUsedAs(lT.Type, lAs.Type)
 		}
 	}
 	return false
 }
 
-func fields(t builder.Type) map[string]*builder.Field {
+func fields(t system.Type) map[string]*system.Field {
 	switch t := t.(type) {
-	case *builder.Object:
+	case *system.Object:
 		return t.Fields
-	case *builder.Interface:
+	case *system.Interface:
 		return t.Fields
 	default:
 		return nil
 	}
 }
 
-func hasSubfields(t builder.Type) bool {
+func hasSubfields(t system.Type) bool {
 	switch t := t.(type) {
-	case *builder.Object, *builder.Interface, *builder.Union:
+	case *system.Object, *system.Interface, *system.Union:
 		return true
-	case *builder.List:
+	case *system.List:
 		return hasSubfields(t.Type)
-	case *builder.NonNull:
+	case *system.NonNull:
 		return hasSubfields(t.Type)
 	default:
 		return false
 	}
 }
 
-func unwrapType(t builder.Type) builder.NamedType {
+func unwrapType(t system.Type) system.NamedType {
 	if t == nil {
 		return nil
 	}
 	for {
 		switch t2 := t.(type) {
-		case builder.NamedType:
+		case system.NamedType:
 			return t2
-		case *builder.List:
+		case *system.List:
 			t = t2.Type
-		case *builder.NonNull:
+		case *system.NonNull:
 			t = t2.Type
 		default:
 			panic("unreachable")
@@ -1007,7 +1007,7 @@ func unwrapType(t builder.Type) builder.NamedType {
 	}
 }
 
-func compatible(a, b builder.Type) bool {
+func compatible(a, b system.Type) bool {
 	for _, pta := range possibleTypes(a) {
 		for _, ptb := range possibleTypes(b) {
 			if pta == ptb {
@@ -1018,18 +1018,18 @@ func compatible(a, b builder.Type) bool {
 	return false
 }
 
-func possibleTypes(t builder.Type) []*builder.Object {
+func possibleTypes(t system.Type) []*system.Object {
 	switch t := t.(type) {
-	case *builder.Object:
-		return []*builder.Object{t}
-	case *builder.Interface:
-		var res []*builder.Object
+	case *system.Object:
+		return []*system.Object{t}
+	case *system.Interface:
+		var res []*system.Object
 		for _, t := range t.PossibleTypes {
 			res = append(res, t)
 		}
 		return res
-	case *builder.Union:
-		var res []*builder.Object
+	case *system.Union:
+		var res []*system.Object
 		for _, t := range t.Types {
 			res = append(res, t)
 		}
@@ -1039,24 +1039,24 @@ func possibleTypes(t builder.Type) []*builder.Object {
 	}
 }
 
-func canBeFragment(t builder.Type) bool {
+func canBeFragment(t system.Type) bool {
 	switch t.(type) {
-	case *builder.Object, *builder.Interface, *builder.Union:
+	case *system.Object, *system.Interface, *system.Union:
 		return true
 	default:
 		return false
 	}
 }
 
-func typesCompatible(a, b builder.Type) bool {
-	al, aIsList := a.(*builder.List)
-	bl, bIsList := b.(*builder.List)
+func typesCompatible(a, b system.Type) bool {
+	al, aIsList := a.(*system.List)
+	bl, bIsList := b.(*system.List)
 	if aIsList || bIsList {
 		return aIsList && bIsList && typesCompatible(al.Type, bl.Type)
 	}
 
-	ann, aIsNN := a.(*builder.NonNull)
-	bnn, bIsNN := b.(*builder.NonNull)
+	ann, aIsNN := a.(*system.NonNull)
+	bnn, bIsNN := b.(*system.NonNull)
 	if aIsNN || bIsNN {
 		return aIsNN && bIsNN && typesCompatible(ann.Type, bnn.Type)
 	}
