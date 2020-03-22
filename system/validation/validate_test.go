@@ -1,4 +1,4 @@
-package validation
+package validation_test
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
 	"github.com/unrotten/graphql/system"
+	"github.com/unrotten/graphql/system/validation"
 	"reflect"
 	"strings"
 	"testing"
@@ -418,7 +419,7 @@ func TestValidate(t *testing.T) {
       }
     `)
 		assert.Equal(t, Nil, err)
-		assert.Zero(t, Validate(testSchema, doc, nil, 50))
+		assert.Zero(t, validation.Validate(testSchema, doc, nil, 50))
 	})
 
 	t.Run("detects bad scalar parse", func(t *testing.T) {
@@ -432,10 +433,10 @@ func TestValidate(t *testing.T) {
 			Message:   `Expected value of type "Invalid", found "bad value"; invalid scalar is always invalid:"bad value"`,
 			Locations: []errors.Location{{3, 25}},
 			Rule:      "ValuesOfCorrectType",
-		}}, Validate(testSchema, doc, nil, 50))
+		}}, validation.Validate(testSchema, doc, nil, 50))
 	})
 
-	t.Run("Validate: Limit maximum number of validation errors", func(t *testing.T) {
+	t.Run("validation.Validate: Limit maximum number of validation errors", func(t *testing.T) {
 
 		const query = `
     {
@@ -448,7 +449,7 @@ func TestValidate(t *testing.T) {
 		assert.Equal(t, Nil, err)
 
 		validateDocument := func(max int) []*errors.GraphQLError {
-			return Validate(testSchema, doc, nil, max)
+			return validation.Validate(testSchema, doc, nil, max)
 		}
 		invalidFieldError := func(name string, rule string, loc errors.Location) *errors.GraphQLError {
 			return &errors.GraphQLError{

@@ -1,4 +1,4 @@
-package execution
+package execution_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
+	"github.com/unrotten/graphql/system/execution"
 	"testing"
 )
 
@@ -69,8 +70,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       }
     `
-			result, err := Do(schema, Params{Query: source})
-			assert.NoError(t, err)
+			result, err := execution.Do(schema, execution.Params{Query: source})
+			assert.Equal(t, errors.MultiError(nil), err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
 			assert.JSONEq(t, `{
@@ -114,8 +115,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       }
     `
-			result, err := Do(schema, Params{Query: source})
-			assert.NoError(t, err)
+			result, err := execution.Do(schema, execution.Params{Query: source})
+			assert.Equal(t, errors.MultiError(nil), err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
 			assert.JSONEq(t, `{
@@ -137,8 +138,8 @@ func TestExecutor_Execute(t *testing.T) {
 		schema := build.MustBuild()
 
 		t.Run("works without directives", func(t *testing.T) {
-			result, err := Do(schema, Params{Query: "{ a, b }"})
-			assert.NoError(t, err)
+			result, err := execution.Do(schema, execution.Params{Query: "{ a, b }"})
+			assert.Equal(t, errors.MultiError(nil), err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
 			assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
@@ -146,32 +147,32 @@ func TestExecutor_Execute(t *testing.T) {
 
 		t.Run("works on scalars", func(t *testing.T) {
 			t.Run("if true includes scalar", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: "{ a, b @include(if: true) }"})
-				assert.NoError(t, err)
+				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @include(if: true) }"})
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("if false omits on scalar", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: "{ a, b @include(if: false) }"})
-				assert.NoError(t, err)
+				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @include(if: false) }"})
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
 			t.Run("unless false includes scalar", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: "{ a, b @skip(if: false) }"})
-				assert.NoError(t, err)
+				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @skip(if: false) }"})
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless true omits scalar", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: "{ a, b @skip(if: true) }"})
-				assert.NoError(t, err)
+				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @skip(if: true) }"})
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
@@ -180,7 +181,7 @@ func TestExecutor_Execute(t *testing.T) {
 
 		t.Run("works on fragment spreads", func(t *testing.T) {
 			t.Run("if false omits fragment spread", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ...Frag @include(if: false)
@@ -189,14 +190,14 @@ func TestExecutor_Execute(t *testing.T) {
           b
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
 			t.Run("if true includes fragment spread", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ...Frag @include(if: true)
@@ -205,14 +206,14 @@ func TestExecutor_Execute(t *testing.T) {
           b
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless true omits fragment spread", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ...Frag @skip(if: true)
@@ -221,7 +222,7 @@ func TestExecutor_Execute(t *testing.T) {
           b
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
@@ -230,7 +231,7 @@ func TestExecutor_Execute(t *testing.T) {
 
 		t.Run("works on inline fragment", func(t *testing.T) {
 			t.Run("if false omits inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ... on Query @include(if: false) {
@@ -238,14 +239,14 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
 			t.Run("if true includes inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ... on Query @include(if: true) {
@@ -253,14 +254,14 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless false includes inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ... on Query @skip(if: false) {
@@ -268,14 +269,14 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless true includes inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ... on Query @skip(if: true) {
@@ -283,7 +284,7 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
@@ -292,7 +293,7 @@ func TestExecutor_Execute(t *testing.T) {
 
 		t.Run("works on anonymous inline fragment", func(t *testing.T) {
 			t.Run("if false omits anonymous inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ... @include(if: false) {
@@ -300,14 +301,14 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
 			t.Run("if true includes anonymous inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query {
           a
           ... @include(if: true) {
@@ -315,14 +316,14 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless false includes anonymous inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query Q {
           a
           ... @skip(if: false) {
@@ -330,14 +331,14 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless true includes anonymous inline fragment", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         query Q {
           a
           ... @skip(if: true) {
@@ -345,7 +346,7 @@ func TestExecutor_Execute(t *testing.T) {
           }
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
@@ -354,39 +355,39 @@ func TestExecutor_Execute(t *testing.T) {
 
 		t.Run("works with skip and include directives", func(t *testing.T) {
 			t.Run("include and no skip", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         {
           a
           b @include(if: true) @skip(if: false)
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("include and skip", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         {
           a
           b @include(if: true) @skip(if: true)
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
 			t.Run("no include or skip", func(t *testing.T) {
-				result, err := Do(schema, Params{Query: `
+				result, err := execution.Do(schema, execution.Params{Query: `
         {
           a
           b @include(if: false) @skip(if: false)
         }
       `})
-				assert.NoError(t, err)
+				assert.Equal(t, errors.MultiError(nil), err)
 				marshal, err := json.Marshal(result)
 				assert.NoError(t, err)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
@@ -403,7 +404,7 @@ func TestExecutor_Execute(t *testing.T) {
 				return fmt.Sprintf("%d", args.ArgA)
 			}, "")
 			schema := build.MustBuild()
-			_, err := Do(schema, Params{Query: `
+			_, err := execution.Do(schema, execution.Params{Query: `
       query ($a: Int) {
         fieldA(argA: $a)
       }
@@ -415,8 +416,8 @@ func TestExecutor_Execute(t *testing.T) {
 			build := schemabuilder.NewSchema()
 			build.Query().FieldFunc("a", func() string { return "rootValue" }, "")
 			schema := build.MustBuild()
-			result, err := Do(schema, Params{Query: "{a}"})
-			assert.NoError(t, err)
+			result, err := execution.Do(schema, execution.Params{Query: "{a}"})
+			assert.Equal(t, errors.MultiError(nil), err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
 			assert.JSONEq(t, `{"a":"rootValue"}`, string(marshal))
@@ -453,7 +454,7 @@ func TestExecutor_Execute(t *testing.T) {
 
 			build.Query().FieldFunc("Data", func() Data { return Data{} }, "")
 			schema := build.MustBuild()
-			result, err := Do(schema, Params{Query: `
+			result, err := execution.Do(schema, execution.Params{Query: `
       query ($size: Int!) {
 		Data{
         	a,
@@ -484,7 +485,7 @@ func TestExecutor_Execute(t *testing.T) {
         e
       }
     `, Variables: map[string]interface{}{"size": float64(100)}})
-			assert.NoError(t, err)
+			assert.Equal(t, errors.MultiError(nil), err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
 			assert.JSONEq(t, `{
@@ -522,7 +523,7 @@ func TestExecutor_Execute(t *testing.T) {
 			build.Query().FieldFunc("c", func() string { return "Cherry" }, "")
 			build.Query().FieldFunc("deep", func() schemabuilder.Query { return schemabuilder.Query{} }, "")
 			schema := build.MustBuild()
-			result, err := Do(schema, Params{Query: `
+			result, err := execution.Do(schema, execution.Params{Query: `
       { a, ...FragOne, ...FragTwo }
 
       fragment FragOne on Query {
@@ -535,7 +536,7 @@ func TestExecutor_Execute(t *testing.T) {
         deep { c, deeper: deep { c } }
       }
     `})
-			assert.NoError(t, err)
+			assert.Equal(t, errors.MultiError(nil), err)
 			marshal, err := json.Marshal(result)
 			assert.NoError(t, err)
 			assert.JSONEq(t, `{
@@ -564,12 +565,12 @@ func TestExecutor_Execute(t *testing.T) {
 				return ""
 			}, "")
 			schema := build.MustBuild()
-			_, err := Do(schema, Params{Query: `
+			_, err := execution.Do(schema, execution.Params{Query: `
       query Example {
         b(numArg: 123, stringArg: "foo")
       }
     `})
-			assert.NoError(t, err)
+			assert.Equal(t, errors.MultiError(nil), err)
 			assert.Equal(t, struct {
 				NumArg    int    `graphql:"numArg"`
 				StringArg string `graphql:"stringArg"`
@@ -627,12 +628,12 @@ func check(t *testing.T, testType interface{}, testData interface{}, expected in
 	build.Query().FieldFunc("test", testType, "")
 	build.Query().FieldFunc("nest", func() schemabuilder.Query { return schemabuilder.Query{} }, "")
 	schema := build.MustBuild()
-	result, err := Do(schema, Params{
+	result, err := execution.Do(schema, execution.Params{
 		Query:         "{ nest { test } }",
 		OperationName: "",
 		Variables:     nil,
 		Context:       context.WithValue(context.Background(), "test", testData),
 	})
-	assert.NoError(t, err)
+	assert.Equal(t, errors.MultiError(nil), err)
 	assert.Equal(t, expected, result)
 }

@@ -25,7 +25,7 @@ type computationOutput struct {
 
 type exeContext struct {
 	context.Context
-	errs []*errors.GraphQLError
+	errs errors.MultiError
 	path []interface{}
 }
 
@@ -91,7 +91,13 @@ func (e *Executor) Execute(ctx context.Context, typ system.Type, source interfac
 func (e *Executor) execute(ctx *exeContext, typ system.Type, source interface{},
 	selectionSet *system.SelectionSet) (interface{}, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		if err, ok := err.(errors.MultiError); ok {
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 	switch typ := typ.(type) {
 	case *system.Scalar:
@@ -223,7 +229,6 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 
 	// for every selection, resolve the value and store it in the output object
 	for _, selection := range selections {
-		ctx.path = append(ctx.path, selection.Alias)
 		if ok, err := shouldIncludeNode(selection.Directives); err != nil {
 			//if err == ErrNoUpdate {
 			//	return nil, err
@@ -233,9 +238,12 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 		} else if !ok {
 			continue
 		}
-
+		ctx.path = append(ctx.path, selection.Alias)
 		if selection.Name == "__typename" {
 			fields[selection.Alias] = typ.Name
+			if len(ctx.path) > 0 {
+				ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+			}
 			continue
 		}
 
@@ -250,6 +258,9 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 		if err != nil {
 			ctx.addErr(selection.Loc, err)
 			fields[selection.Alias] = nil
+			if len(ctx.path) > 0 {
+				ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+			}
 			continue
 		}
 		fields[selection.Alias] = resolved
@@ -267,7 +278,6 @@ func (e *Executor) resolveAndExecute(ctx *exeContext, field *system.Field, sourc
 	if err != nil {
 		return nil, err
 	}
-
 	return e.execute(ctx, field.Type, value, selection.SelectionSet)
 }
 
@@ -377,6 +387,9 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 		if !ok {
 			field, ok = graphqlTyp.Fields[selection.Name]
 			if !ok {
+				if len(ctx.path) > 0 {
+					ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
+				}
 				continue
 			}
 		}

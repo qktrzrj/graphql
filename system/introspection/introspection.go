@@ -108,7 +108,7 @@ const (
 type __Schema struct {
 	Desc             string        `graphql:"description"`
 	Types            []__Type      `graphql:"types"`
-	QueryType        __Type        `graphql:"queryType"`
+	QueryType        *__Type       `graphql:"queryType"`
 	MutationType     *__Type       `graphql:"mutationType"`
 	SubscriptionType *__Type       `graphql:"subscriptionType"`
 	Directives       []__Directive `graphql:"directives"`
@@ -138,7 +138,7 @@ var includeDirective = __Directive{
 	Args: []__InputValue{
 		{
 			Name: "if",
-			Type: __Type{OfType: &system.Scalar{Name: "bool"}},
+			Type: __Type{OfType: &system.Scalar{Name: "Boolean"}},
 			Desc: "Included when true.",
 		},
 	},
@@ -156,7 +156,7 @@ var skipDirective = __Directive{
 	Args: []__InputValue{
 		{
 			Name: "if",
-			Type: __Type{OfType: &system.Scalar{Name: "bool"}},
+			Type: __Type{OfType: &system.Scalar{Name: "Boolean"}},
 			Desc: "Skipped when true.",
 		},
 	},
@@ -194,16 +194,15 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 		case *system.Interface:
 			return INTERFACE
 		}
-		panic("valid typeKind !")
+		return ""
 	}, "")
 
-	object.FieldFunc("name", func(t __Type) *string {
+	object.FieldFunc("name", func(t __Type) string {
 		switch t := t.OfType.(type) {
 		case system.NamedType:
-			name := t.TypeName()
-			return &name
+			return t.TypeName()
 		default:
-			return nil
+			return ""
 		}
 	}, "")
 
@@ -219,12 +218,12 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 	object.FieldFunc("fields", func(t __Type, args struct {
 		IncludeDeprecated *bool `graphql:"includeDeprecated"`
 	}) []__Field {
-		var fields []__Field
+		fields := make([]__Field, 0)
 
 		switch t := t.OfType.(type) {
 		case *system.Object:
 			for name, field := range t.Fields {
-				var args []__InputValue
+				args := make([]__InputValue, 0)
 				for name, arg := range field.Args {
 					args = append(args, __InputValue{
 						Name: name,
@@ -244,7 +243,7 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 			}
 		case *system.Interface:
 			for name, field := range t.Fields {
-				var args []__InputValue
+				args := make([]__InputValue, 0)
 				for name, arg := range field.Args {
 					args = append(args, __InputValue{
 						Name: name,
@@ -269,7 +268,7 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 	}, "should be non-null for OBJECT and INTERFACE only, must be null for the others")
 
 	object.FieldFunc("interfaces", func(t __Type) []__Type {
-		var interfaces []__Type
+		interfaces := make([]__Type, 0)
 
 		switch t := t.OfType.(type) {
 		case *system.Object:
@@ -287,7 +286,7 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 	}, "should be non-null for OBJECT and INTERFACE only, must be null for the others")
 
 	object.FieldFunc("possibleTypes", func(t __Type) []__Type {
-		var types []__Type
+		types := make([]__Type, 0)
 
 		switch t := t.OfType.(type) {
 		case *system.Union:
@@ -309,7 +308,7 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 
 		switch t := t.OfType.(type) {
 		case *system.Enum:
-			var enumValues []__EnumValue
+			enumValues := make([]__EnumValue, len(t.Map))
 			for k, v := range t.Map {
 				val := fmt.Sprintf("%v", k)
 				enumValues = append(enumValues,
@@ -318,11 +317,11 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 			sort.Slice(enumValues, func(i, j int) bool { return enumValues[i].Name < enumValues[j].Name })
 			return enumValues
 		}
-		return nil
+		return []__EnumValue{}
 	}, "should be non-null for ENUM only, must be null for the others")
 
 	object.FieldFunc("inputFields", func(t __Type) []__InputValue {
-		var fields []__InputValue
+		fields := make([]__InputValue, 0)
 
 		switch t := t.OfType.(type) {
 		case *system.InputObject:
@@ -504,13 +503,20 @@ func (s *introspection) registerQuery(schema *schemabuilder.Schema) {
 		}
 		sort.Slice(types, func(i, j int) bool { return types[i].OfType.String() < types[j].OfType.String() })
 
-		return &__Schema{
-			Types:            types,
-			QueryType:        __Type{OfType: s.query},
-			MutationType:     &__Type{OfType: s.mutation},
-			SubscriptionType: &__Type{OfType: s.subscription},
-			Directives:       []__Directive{includeDirective, skipDirective},
+		sc := &__Schema{
+			Types:      types,
+			Directives: []__Directive{includeDirective, skipDirective},
 		}
+		if s.query != nil {
+			sc.QueryType = &__Type{OfType: s.query}
+		}
+		if s.mutation != nil {
+			sc.MutationType = &__Type{OfType: s.mutation}
+		}
+		if s.subscription != nil {
+			sc.SubscriptionType = &__Type{OfType: s.subscription}
+		}
+		return sc
 	}, "")
 
 	object.FieldFunc("__type", func(args struct {
@@ -552,33 +558,48 @@ func AddIntrospectionToSchema(schema *system.Schema) {
 	collectTypes(schema.Query, types)
 	collectTypes(schema.Mutation, types)
 	collectTypes(schema.Subscription, types)
-	for k, v := range schema.TypeMap {
-		types[k] = v
-	}
 	is := &introspection{
-		types:        types,
-		query:        schema.Query,
-		mutation:     schema.Mutation,
-		subscription: schema.Subscription,
+		types: types,
 	}
 	isSchema := is.schema()
 
-	query := schema.Query.(*system.Object)
+	copyObject(schema.Query, isSchema.Query)
+	schema.Query = isSchema.Query
+	//copyObject(schema.Mutation, isSchema.Mutation)
+	//schema.Mutation = isSchema.Mutation
+	//copyObject(schema.Subscription, isSchema.Subscription)
+	//schema.Subscription = isSchema.Subscription
 
-	isQuery := isSchema.Query.(*system.Object)
-	for k, v := range query.Fields {
-		isQuery.Fields[k] = v
-	}
 	for k, v := range isSchema.TypeMap {
 		schema.TypeMap[k] = v
 	}
 
-	schema.Query = isQuery
+	is.query, is.mutation, is.subscription = schema.Query, schema.Mutation, schema.Subscription
+	//is.types["Mutation"] = schema.Mutation
+	//is.types["Subscription"] = schema.Subscription
+}
+
+func copyObject(s system.Type, d system.Type) {
+	if s == nil {
+		return
+	}
+	if d == nil {
+		d = &system.Object{}
+	}
+	src := s.(*system.Object)
+	dest := d.(*system.Object)
+	dest.Name, dest.IsTypeOf, dest.Desc = src.Name, src.IsTypeOf, src.Desc
+	for k, v := range src.Fields {
+		dest.Fields[k] = v
+	}
+	for k, v := range src.Interfaces {
+		dest.Interfaces[k] = v
+	}
 }
 
 // ComputeSchemaJSON returns the result of executing a GraphQL introspection
 // query.
-func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, []*errors.GraphQLError) {
+func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, errors.MultiError) {
 	schema := schemaBuilderSchema.MustBuild()
 	AddIntrospectionToSchema(schema)
 

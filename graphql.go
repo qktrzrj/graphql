@@ -7,6 +7,7 @@ import (
 	"github.com/unrotten/graphql/system/execution"
 	"github.com/unrotten/graphql/system/validation"
 	"net/http"
+	"strings"
 )
 
 type Handler struct {
@@ -24,6 +25,16 @@ type Response struct {
 	Extensions map[string]interface{} `json:"extensions,omitempty"`
 }
 
+// HTTPHandler implements the handler required for executing the graphql queries and mutations
+func HTTPHandler(schema *system.Schema) http.Handler {
+	h := &Handler{
+		Schema:   schema,
+		Executor: &execution.Executor{},
+	}
+
+	return h
+}
+
 // Validate validates the given query with the Schema.
 func (s *Handler) Validate(queryString string) []*errors.GraphQLError {
 	doc, qErr := system.Parse(queryString)
@@ -38,9 +49,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "must be post", http.StatusBadRequest)
 	}
-	ctx := context
+	ctx := *context
 	ctx.Writer, ctx.Request = w, r
-	h.ctx = ctx
+	h.ctx = &ctx
 	var params struct {
 		Query         string                 `json:"query"`
 		OperationName string                 `json:"operationName"`
@@ -79,12 +90,12 @@ func (h *Handler) Exec(ctx *Context, queryString string, operationName string, v
 	}
 
 	root := h.Schema.Query
-	if operationName == "mutation" {
+	if strings.ToLower(operationName) == "mutation" {
 		root = h.Schema.Mutation
 	}
 	ctx.builderTyp = root
 	ctx.selectionSet = selectionSet
-	Use(Execute(h))
+	ctx.handlersChain = append(ctx.handlersChain, Execute(h))
 	ctx.Next()
 
 	execute, exeErr := ctx.Execute(), ctx.Err()

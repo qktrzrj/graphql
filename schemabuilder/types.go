@@ -578,15 +578,20 @@ type Id struct {
 	Value interface{}
 }
 
-func (i *Id) MarshalJSON() ([]byte, error) {
-	return json.Marshal(i.Value)
-}
-
 var ID = &Scalar{
-	Name:      "ID",
-	Desc:      "ID",
-	Type:      Id{},
-	Serialize: Serialize,
+	Name: "ID",
+	Desc: "ID",
+	Type: Id{},
+	Serialize: func(id interface{}) (interface{}, error) {
+		switch id := id.(type) {
+		case Id:
+			return id.Value, nil
+		case *Id:
+			return id.Value, nil
+		default:
+			return nil, fmt.Errorf("unexpected type %v for Id", id)
+		}
+	},
 	ParseValue: func(value interface{}) (interface{}, error) {
 		switch val := value.(type) {
 		case string:

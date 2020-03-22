@@ -100,7 +100,9 @@ func TestObject(t *testing.T) {
 		Init()
 		builder.Scalar("Scalar", Scalar{}, "")
 		object := builder.Object("Object", Object{}, "")
-		object.FieldFunc("field2", func(args struct{ input InputObject }) Scalar { return args.input.Field2 }, "")
+		object.FieldFunc("field2", func(args struct {
+			Input InputObject `graphql:"input"`
+		}) Scalar { return args.Input.Field2 }, "")
 		inputObject := builder.InputObject("InputObject", InputObject{}, "")
 		inputObject.FieldDefault("field2", Scalar{Value: "default"})
 		builder.Query().FieldFunc("Object", func() Object { return Object{} }, "")

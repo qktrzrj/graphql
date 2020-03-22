@@ -57,7 +57,7 @@ func (l *lexer) location() errors.Location {
 }
 
 // skip whitespace, also tab, commas, BOM and comments
-func (l *lexer) skipWhitespace() {
+func (l *lexer) SkipWhitespace() {
 	l.comment.Reset()
 	for {
 		l.next = l.scan.Scan()
@@ -105,7 +105,7 @@ func (l *lexer) advance(expected rune) {
 		found = strings.TrimSuffix(found, `"`)
 		l.SyntaxError(fmt.Sprintf(`Expected %s, found %q.`, scanner.TokenString(expected), found))
 	}
-	l.skipWhitespace()
+	l.SkipWhitespace()
 }
 
 // If the next token is of the given kind, advance and skip whitespace.
@@ -116,7 +116,7 @@ func (l *lexer) advanceKeyWord(keyword string) {
 		found = strings.TrimSuffix(found, `"`)
 		l.SyntaxError(fmt.Sprintf(`Expected "%s", found %q.`, keyword, found))
 	}
-	l.skipWhitespace()
+	l.SkipWhitespace()
 }
 
 func (l *lexer) SyntaxError(message string) {

@@ -33,7 +33,7 @@ var context = &Context{
 	maxDepth:              50,
 	logger:                log.New(os.Stderr, "", 0),
 	useStringDescriptions: false,
-	handlersChain:         GlobalHanlderFunc,
+	handlersChain:         []HandlerFunc{},
 	err:                   nil,
 	execute:               nil,
 	builderTyp:            nil,

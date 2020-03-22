@@ -1,13 +1,11 @@
 package graphql
 
-var GlobalHanlderFunc []HandlerFunc
-
 type HandlerFunc func(*Context)
 
 type MiddlewareFunc func() HandlerFunc
 
 func Use(mm ...HandlerFunc) {
-	GlobalHanlderFunc = append(GlobalHanlderFunc, mm...)
+	context.handlersChain = append(context.handlersChain, mm...)
 }
 
 func Execute(handler *Handler) HandlerFunc {

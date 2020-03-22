@@ -2,9 +2,16 @@ package schemabuilder
 
 import (
 	"context"
+	"fmt"
+	"go/ast"
 	"reflect"
 	"strings"
 )
+
+type structFields struct {
+	list      []*reflect.Value
+	nameIndex map[string]int
+}
 
 func getField(source interface{}, name string) reflect.Type {
 	typ := reflect.TypeOf(source)
@@ -51,6 +58,93 @@ func GetField(typ reflect.Value, name string) *reflect.Value {
 			return &field
 		}
 	}
+	return nil
+}
+
+func Convert(args map[string]interface{}, typ reflect.Type) (interface{}, error) {
+	fields := structFields{
+		nameIndex: make(map[string]int),
+	}
+	tv := reflect.New(typ).Elem()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		tag := field.Tag.Get("graphql")
+		if tag == "-" || !ast.IsExported(field.Name) {
+			continue
+		}
+		tf := tv.Field(i)
+		fields.list = append(fields.list, &tf)
+		if tag == "" {
+			fields.nameIndex[field.Name] = len(fields.list) - 1
+			continue
+		}
+		split := strings.Split(tag, ",")
+		fields.nameIndex[split[0]] = len(fields.list) - 1
+	}
+
+	for k, v := range args {
+		if v == nil {
+			continue
+		}
+		var f reflect.Value
+		if i, ok := fields.nameIndex[k]; ok {
+			f = *fields.list[i]
+		} else {
+			return nil, fmt.Errorf("args field %s not exist in arg struct", k)
+		}
+		vv := reflect.ValueOf(v)
+		if err := value(f, vv); err != nil {
+			return nil, err
+		}
+	}
+	return tv.Interface(), nil
+}
+
+func value(f reflect.Value, v reflect.Value) error {
+	if f.IsValid() {
+		f.Set(reflect.New(f.Type()).Elem())
+	}
+	for v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return nil
+		}
+		v = v.Elem()
+	}
+	for f.Kind() == reflect.Ptr {
+		if f.IsNil() {
+			f.Set(reflect.New(f.Type().Elem()))
+		}
+		f = f.Elem()
+	}
+	if f.Kind() == reflect.Slice {
+		if v.Kind() != reflect.Slice {
+			return fmt.Errorf("field %s type is slice, but value %s not", f.Type().String(), v.Type().String())
+		}
+		fs := reflect.MakeSlice(f.Type(), v.Len(), v.Len())
+		for i := 0; i < v.Len(); i++ {
+			if err := value(fs.Index(i), v.Index(i)); err != nil {
+				return err
+			}
+		}
+		f.Set(fs)
+		return nil
+	}
+	if f.Kind() == reflect.Map {
+		if v.Kind() != reflect.Map {
+			return fmt.Errorf("field %s type is map, but value %s not", f.Type().String(), v.Type().String())
+		}
+		fm := reflect.MakeMapWithSize(f.Type(), v.Len())
+		for _, k := range v.MapKeys() {
+			fv := reflect.New(f.Type().Elem()).Elem()
+			if err := value(fv, v.MapIndex(k)); err != nil {
+				return err
+			}
+			fm.SetMapIndex(k, fv)
+		}
+		f.Set(fm)
+		return nil
+	}
+	f.Set(v)
 	return nil
 }
 

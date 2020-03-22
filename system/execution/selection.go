@@ -14,6 +14,9 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 	if len(document.Operations) == 0 {
 		return nil, errors.New("no operations in query document")
 	}
+	if vars == nil {
+		vars = make(map[string]interface{})
+	}
 	var op *ast.OperationDefinition
 	if operationName == "" {
 		if len(document.Operations) > 1 {
@@ -41,6 +44,17 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 	}
 
 	for _, fragment := range document.Fragments {
+		// set default value
+		for _, v := range fragment.VariableDefinitions {
+			if _, ok := vars[v.Var.Name.Name]; !ok && v.Var != nil && v.DefaultValue != nil {
+				value, err := system.ValueToJson(v.DefaultValue, nil)
+				if err != nil {
+					return nil, err
+				} else {
+					vars[v.Var.Name.Name] = value
+				}
+			}
+		}
 		selectionSet, err := parseSelectionSet(fragment.SelectionSet, globalFragments, vars)
 		if err != nil {
 			return rv, err
@@ -48,6 +62,19 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 		globalFragments[fragment.Name.Name].SelectionSet = selectionSet
 	}
 
+	// set default value
+	for _, v := range op.Vars {
+		if _, ok := vars[v.Var.Name.Name]; !ok {
+			if v.DefaultValue != nil {
+				value, err := system.ValueToJson(v.DefaultValue, nil)
+				if err != nil {
+					return nil, err
+				} else {
+					vars[v.Var.Name.Name] = value
+				}
+			}
+		}
+	}
 	selectionSet, err := parseSelectionSet(op.SelectionSet, globalFragments, vars)
 	if err != nil {
 		return rv, err

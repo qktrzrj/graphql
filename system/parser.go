@@ -50,7 +50,7 @@ func ParseDocument(source string) (*ast.Document, *errors.GraphQLError) {
 
 func parseDocument(l *lexer) *ast.Document {
 	doc := &ast.Document{Kind: kinds.Document, Loc: l.location()}
-	l.skipWhitespace()
+	l.SkipWhitespace()
 	for l.peek() != token.EOF {
 		if l.peek() == token.BRACE_L {
 			op := &ast.OperationDefinition{Kind: kinds.OperationDefinition, Operation: ast.Query, Loc: l.location()}
@@ -145,11 +145,11 @@ func parseVariableDefinition(l *lexer) *ast.VariableDefinition {
 	loc := l.location()
 	variable := parseVariable(l)
 	l.advance(token.COLON)
-	t := parseType(l)
+	t := ParseType(l)
 	var defaultValue ast.Value
 	if l.peek() == token.EQUALS {
 		l.advance(token.EQUALS)
-		defaultValue = parseValueLiteral(l, true)
+		defaultValue = ParseValueLiteral(l, true)
 	}
 	var directives []*ast.Directive
 	if l.peek() == token.AT {
@@ -171,13 +171,13 @@ func parseVariableDefinition(l *lexer) *ast.VariableDefinition {
  *   - ListType
  *   - NonNullType
  */
-func parseType(l *lexer) ast.Type {
+func ParseType(l *lexer) ast.Type {
 	loc := l.location()
 	var t ast.Type
 	switch l.peek() {
 	case token.BRACKET_L:
 		l.advance(token.BRACKET_L)
-		t = parseType(l)
+		t = ParseType(l)
 		fallthrough
 	case token.BRACKET_R:
 		l.advance(token.BRACKET_R)
@@ -253,7 +253,7 @@ func parseArguments(l *lexer) []*ast.Argument {
 		loc := l.location()
 		name := parseName(l)
 		l.advance(token.COLON)
-		value := parseValueLiteral(l, false)
+		value := ParseValueLiteral(l, false)
 		args = append(args, &ast.Argument{Kind: kinds.Argument, Name: name, Value: value, Loc: loc})
 	}
 	l.advance(token.PAREN_R)
@@ -275,7 +275,7 @@ func parseArguments(l *lexer) []*ast.Argument {
  *
  * EnumValue : Name but not `true`, `false` or `null`
  */
-func parseValueLiteral(l *lexer, constOnly bool) ast.Value {
+func ParseValueLiteral(l *lexer, constOnly bool) ast.Value {
 	loc := l.location()
 	switch l.peek() {
 	case token.BRACKET_L:
@@ -334,7 +334,7 @@ func parseList(l *lexer, constOnly bool) *ast.ListValue {
 	var list []ast.Value
 	l.advance(token.BRACKET_L)
 	for l.peek() != token.BRACKET_R {
-		list = append(list, parseValueLiteral(l, constOnly))
+		list = append(list, ParseValueLiteral(l, constOnly))
 	}
 	l.advance(token.BRACKET_R)
 	return &ast.ListValue{Kind: kinds.ListValue, Values: list, Loc: loc}
@@ -363,7 +363,7 @@ func parseObjectField(l *lexer, constOnly bool) *ast.ObjectField {
 	loc := l.location()
 	name := parseNamed(l)
 	l.advance(token.COLON)
-	value := parseValueLiteral(l, constOnly)
+	value := ParseValueLiteral(l, constOnly)
 	return &ast.ObjectField{Kind: kinds.ObjectField, Name: name, Value: value, Loc: loc}
 }
 
@@ -475,6 +475,8 @@ func ValueToJson(value ast.Value, vars map[string]interface{}) (interface{}, *er
 		return v, nil
 	case *ast.StringValue:
 		return value.Value, nil
+	case *ast.NullValue:
+		return nil, nil
 	case *ast.BooleanValue:
 		return value.Value, nil
 	case *ast.EnumValue:

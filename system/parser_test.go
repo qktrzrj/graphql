@@ -1,10 +1,11 @@
-package system
+package system_test
 
 import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/resource"
+	"github.com/unrotten/graphql/system"
 	"github.com/unrotten/graphql/system/ast"
 	"github.com/unrotten/graphql/system/kinds"
 	"testing"
@@ -14,18 +15,18 @@ var NilGraphQLError *errors.GraphQLError
 
 func TestParser(t *testing.T) {
 	t.Run("asserts that a source to parse was provided", func(t *testing.T) {
-		_, err := ParseDocument("")
+		_, err := system.ParseDocument("")
 		assert.EqualError(t, err, "graphql: Must provide Source. Received: undefined.")
 	})
 
 	t.Run("parse provides useful errors", func(t *testing.T) {
-		_, err := ParseDocument("{")
+		_, err := system.ParseDocument("{")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected Ident, found "".`,
 			Locations: []errors.Location{{1, 2}},
 		}, err)
 
-		_, err = ParseDocument(`
+		_, err = system.ParseDocument(`
       { ...MissingOn }
       fragment MissingOn Operation
     `)
@@ -34,31 +35,31 @@ func TestParser(t *testing.T) {
 			Locations: []errors.Location{{3, 26}},
 		}, err)
 
-		_, err = ParseDocument("{ field: {} }")
+		_, err = system.ParseDocument("{ field: {} }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected Ident, found "{".`,
 			Locations: []errors.Location{{1, 10}},
 		}, err)
 
-		_, err = ParseDocument("notAnOperation Foo { field }")
+		_, err = system.ParseDocument("notAnOperation Foo { field }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Unexpected "notAnOperation".`,
 			Locations: []errors.Location{{1, 16}},
 		}, err)
 
-		_, err = ParseDocument("...")
+		_, err = system.ParseDocument("...")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected Ident, found ".".`,
 			Locations: []errors.Location{{1, 1}},
 		}, err)
 
-		_, err = ParseDocument(`{ ""`)
+		_, err = system.ParseDocument(`{ ""`)
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Expected Ident, found "".`),
 			Locations: []errors.Location{{1, 3}},
 		}, err)
 
-		_, err = ParseDocument("query")
+		_, err = system.ParseDocument("query")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   `Syntax Error: Expected "{", found "".`,
 			Locations: []errors.Location{{1, 6}},
@@ -66,12 +67,12 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses variable inline values", func(t *testing.T) {
-		_, err := ParseDocument("{ field(complex: { a: { b: [ $var ] } }) }")
+		_, err := system.ParseDocument("{ field(complex: { a: { b: [ $var ] } }) }")
 		assert.Equal(t, NilGraphQLError, err)
 	})
 
 	t.Run("parses constant default values", func(t *testing.T) {
-		_, err := ParseDocument("query Foo($x: Complex = { a: { b: [ $var ] } }) { field }")
+		_, err := system.ParseDocument("query Foo($x: Complex = { a: { b: [ $var ] } }) { field }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Unexpected %q.`, `"$"`),
 			Locations: []errors.Location{{1, 37}},
@@ -79,12 +80,12 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses variable definition directives", func(t *testing.T) {
-		_, err := ParseDocument("query Foo($x: Boolean = false @bar) { field }")
+		_, err := system.ParseDocument("query Foo($x: Boolean = false @bar) { field }")
 		assert.Equal(t, NilGraphQLError, err)
 	})
 
 	t.Run(`does not accept fragments named "on"`, func(t *testing.T) {
-		_, err := ParseDocument("fragment on on on { on }")
+		_, err := system.ParseDocument("fragment on on on { on }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Unexpected Name "on".`),
 			Locations: []errors.Location{{1, 10}},
@@ -92,7 +93,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run(`oes not accept fragments spread of "on"`, func(t *testing.T) {
-		_, err := ParseDocument("{ ...on }")
+		_, err := system.ParseDocument("{ ...on }")
 		assert.Equal(t, &errors.GraphQLError{
 			Message:   fmt.Sprintf(`Syntax Error: Expected Ident, found "}".`),
 			Locations: []errors.Location{{1, 9}},
@@ -100,7 +101,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run(`parses multi-byte characters`, func(t *testing.T) {
-		doc, err := ParseDocument(`
+		doc, err := system.ParseDocument(`
       # This comment has a \u0A0A multi-byte character.
       { field(arg: "Has a \u0A0A multi-byte character.") }
     `)
@@ -110,7 +111,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses kitchen sink", func(t *testing.T) {
-		_, err := ParseDocument(string(resource.KitchenSinkQuery))
+		_, err := system.ParseDocument(string(resource.KitchenSinkQuery))
 		assert.Equal(t, NilGraphQLError, err)
 	})
 
@@ -131,13 +132,13 @@ func TestParser(t *testing.T) {
             @%s(%s: %s)
         }
       `, keyword, fragmentName, keyword, fragmentName, keyword, keyword, keyword, keyword, keyword, keyword)
-			_, err := ParseDocument(document)
+			_, err := system.ParseDocument(document)
 			assert.Equal(t, NilGraphQLError, err)
 		}
 	})
 
 	t.Run("parses anonymous mutation operations", func(t *testing.T) {
-		_, err := ParseDocument(`
+		_, err := system.ParseDocument(`
       mutation {
         mutationField
       }
@@ -146,7 +147,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses anonymous subscription operations", func(t *testing.T) {
-		_, err := ParseDocument(`
+		_, err := system.ParseDocument(`
       subscription {
         subscriptionField
       }
@@ -155,7 +156,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses named mutation operations", func(t *testing.T) {
-		_, err := ParseDocument(`
+		_, err := system.ParseDocument(`
       mutation Foo {
         mutationField
       }
@@ -164,7 +165,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses named subscription operations", func(t *testing.T) {
-		_, err := ParseDocument(`
+		_, err := system.ParseDocument(`
       subscription Foo {
         subscriptionField
       }
@@ -173,7 +174,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("creates ast", func(t *testing.T) {
-		doc, err := ParseDocument(`
+		doc, err := system.ParseDocument(`
       {
         node(id: 4) {
           id,
@@ -266,7 +267,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("creates ast from nameless query without variables", func(t *testing.T) {
-		doc, err := ParseDocument(`
+		doc, err := system.ParseDocument(`
       query {
         node {
           id
@@ -330,16 +331,16 @@ func TestParser(t *testing.T) {
 
 func TestParseValueLiteral(t *testing.T) {
 	t.Run("parses null value", func(t *testing.T) {
-		lexer := NewLexer("null")
-		lexer.skipWhitespace()
-		literal := parseValueLiteral(lexer, false)
+		lexer := system.NewLexer("null")
+		lexer.SkipWhitespace()
+		literal := system.ParseValueLiteral(lexer, false)
 		assert.Equal(t, &ast.NullValue{Kind: kinds.NullValue, Loc: errors.Location{1, 1}}, literal)
 	})
 
 	t.Run("parses list values", func(t *testing.T) {
-		lexer := NewLexer(`[123 "abc"]`)
-		lexer.skipWhitespace()
-		literal := parseValueLiteral(lexer, false)
+		lexer := system.NewLexer(`[123 "abc"]`)
+		lexer.SkipWhitespace()
+		literal := system.ParseValueLiteral(lexer, false)
 		assert.Equal(t, &ast.ListValue{
 			Kind: kinds.ListValue,
 			Loc:  errors.Location{1, 1},
@@ -361,8 +362,8 @@ func TestParseValueLiteral(t *testing.T) {
 
 func TestParseType(t *testing.T) {
 	t.Run("parses well known types", func(t *testing.T) {
-		lexer := NewLexer("String")
-		lexer.skipWhitespace()
+		lexer := system.NewLexer("String")
+		lexer.SkipWhitespace()
 		assert.Equal(t, &ast.Named{
 			Kind: kinds.Named,
 			Name: &ast.Name{
@@ -371,12 +372,12 @@ func TestParseType(t *testing.T) {
 				Loc:  errors.Location{1, 1},
 			},
 			Loc: errors.Location{1, 1},
-		}, parseType(lexer))
+		}, system.ParseType(lexer))
 	})
 
 	t.Run("parses custom types", func(t *testing.T) {
-		lexer := NewLexer("MyType")
-		lexer.skipWhitespace()
+		lexer := system.NewLexer("MyType")
+		lexer.SkipWhitespace()
 		assert.Equal(t, &ast.Named{
 			Kind: kinds.Named,
 			Name: &ast.Name{
@@ -385,12 +386,12 @@ func TestParseType(t *testing.T) {
 				Loc:  errors.Location{1, 1},
 			},
 			Loc: errors.Location{1, 1},
-		}, parseType(lexer))
+		}, system.ParseType(lexer))
 	})
 
 	t.Run("parses list types", func(t *testing.T) {
-		lexer := NewLexer("[MyType]")
-		lexer.skipWhitespace()
+		lexer := system.NewLexer("[MyType]")
+		lexer.SkipWhitespace()
 		assert.Equal(t, &ast.List{
 			Kind: kinds.List,
 			Type: &ast.Named{
@@ -403,12 +404,12 @@ func TestParseType(t *testing.T) {
 				Loc: errors.Location{1, 2},
 			},
 			Loc: errors.Location{1, 1},
-		}, parseType(lexer))
+		}, system.ParseType(lexer))
 	})
 
 	t.Run("parses non-null types", func(t *testing.T) {
-		lexer := NewLexer("MyType!")
-		lexer.skipWhitespace()
+		lexer := system.NewLexer("MyType!")
+		lexer.SkipWhitespace()
 		assert.Equal(t, &ast.NonNull{
 			Kind: kinds.NonNull,
 			Type: &ast.Named{
@@ -421,12 +422,12 @@ func TestParseType(t *testing.T) {
 				Loc: errors.Location{1, 1},
 			},
 			Loc: errors.Location{1, 1},
-		}, parseType(lexer))
+		}, system.ParseType(lexer))
 	})
 
 	t.Run("parses nested types", func(t *testing.T) {
-		lexer := NewLexer("[MyType!]")
-		lexer.skipWhitespace()
+		lexer := system.NewLexer("[MyType!]")
+		lexer.SkipWhitespace()
 		assert.Equal(t, &ast.List{
 			Kind: kinds.List,
 			Type: &ast.NonNull{
@@ -443,6 +444,6 @@ func TestParseType(t *testing.T) {
 				Loc: errors.Location{1, 2},
 			},
 			Loc: errors.Location{1, 1},
-		}, parseType(lexer))
+		}, system.ParseType(lexer))
 	})
 }

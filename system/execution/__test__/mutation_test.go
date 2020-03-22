@@ -3,6 +3,7 @@ package __test__
 import (
 	"errors"
 	"github.com/stretchr/testify/assert"
+	errors2 "github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
 	"github.com/unrotten/graphql/system"
 	"github.com/unrotten/graphql/system/execution"
@@ -96,7 +97,7 @@ func TestExecutor_Execute2(t *testing.T) {
       }
     `, OperationName: "mutation"}, false)
 
-			assert.NoError(t, err)
+			assert.Equal(t, errors2.MultiError(nil), err)
 			assert.Equal(t, map[string]interface{}{
 				"first":  map[string]interface{}{"theNumber": 1},
 				"second": map[string]interface{}{"theNumber": 2},
@@ -130,7 +131,7 @@ func TestExecutor_Execute2(t *testing.T) {
         }
       }
     `, OperationName: "mutation"}, false)
-			assert.EqualError(t, err, "graphql:  cannot change the number (9:52) path: [third]\ngraphql:  cannot change the number (18:62) path: [sixth]\n")
+			assert.EqualError(t, err, "[graphql:  cannot change the number (18:62) path: [sixth]\ngraphql:  cannot change the number (9:52) path: [third]]")
 			assert.Equal(t, map[string]interface{}{
 				"first":  map[string]interface{}{"theNumber": 1},
 				"second": map[string]interface{}{"theNumber": 2},

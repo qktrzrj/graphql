@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	strbuilder "github.com/unrotten/builder"
 	"github.com/unrotten/graphql/system"
 	"go/ast"
 	"reflect"
@@ -30,8 +29,12 @@ var Serialize = func(value interface{}) (interface{}, error) {
 	switch v := value.(type) {
 	case string, float64, int64, bool, int, int8, int16, int32, uint, uint8, uint16, uint32, uint64, float32, time.Time:
 		return v, nil
+	case *string, *float64, *int64, *bool, *int, *int8, *int16, *int32, *uint, *uint8, *uint16, *uint32, *uint64, *float32, *time.Time:
+		return v, nil
 	case []byte:
 		return string(v), nil
+	case *[]byte:
+		return string(*v), nil
 	default:
 		marshal, err := json.Marshal(v)
 		if err != nil {
@@ -243,6 +246,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			field := typ.Field(i)
 			name := field.Name
 			var desc string
+			var nonnull bool
 			if tag := field.Tag.Get("graphql"); tag == "-" {
 				continue
 			} else if tag != "" {
@@ -250,6 +254,9 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 				name = split[0]
 				if len(split) > 1 {
 					desc = split[1]
+				}
+				if len(split) > 2 {
+					nonnull = split[2] == "nonnull"
 				}
 			}
 			if _, ok := obj.FieldResolve[name]; ok {
@@ -261,6 +268,9 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 				}
 				if _, ok := fieldTyp.(*system.InputObject); ok {
 					return fmt.Errorf("object %s field %s type can not be input object", typ.String(), name)
+				}
+				if nonnull {
+					fieldTyp = &system.NonNull{Type: fieldTyp}
 				}
 				object.Fields[name] = &system.Field{
 					Name: name,
@@ -295,7 +305,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("unknown type: %s", typ.String())
+	return nil
 }
 
 func (sb *schemaBuilder) buildUnion(typ reflect.Type) error {
@@ -355,33 +365,40 @@ func (sb *schemaBuilder) builInputObject(typ reflect.Type) error {
 		if err != nil {
 			return err
 		}
-		resolve, defaultVal, err := sb.getArgResolve(fieldTyp)
+		resolve, err := sb.getArgResolve(fieldTyp)
 		if err != nil {
 			return err
 		}
 		resolveMap[name] = resolve
-		if defaultValue == nil {
-			defaultValue = defaultVal
-		}
 		inputObject.Fields[name] = &system.InputField{
 			Name:         name,
 			Type:         fieldTyp,
 			DefaultValue: defaultValue,
 		}
 		inputObject.Fields[name].Type = fieldTyp
-
 	}
-	sb.inputObjResolve[input.Name] = func(args interface{}) (interface{}, error) {
-		if m, ok := args.(map[string]interface{}); ok {
-			strval := strbuilder.EmptyBuilder
-			for key, val := range m {
-				value, err := resolveMap[key](val)
-				if err != nil {
-					return nil, err
-				}
-				strval = strbuilder.Set(strval, key, value).(strbuilder.Builder)
+	sb.inputObjResolve[inputObject.Name] = func(args interface{}) (interface{}, error) {
+		if args == nil {
+			args = make(map[string]interface{})
+		}
+		for name, field := range inputObject.Fields {
+			if args.(map[string]interface{})[name] == nil && field.DefaultValue != nil {
+				args.(map[string]interface{})[name] = field.DefaultValue
 			}
-			return strbuilder.GetStructLikeByTag(strval, reflect.New(typ).Elem().Interface(), "graphql", ","), nil
+		}
+		if args, ok := args.(map[string]interface{}); ok {
+			for key, val := range args {
+				if resolve, ok := resolveMap[key]; ok {
+					value, err := resolve(val)
+					if err != nil {
+						return nil, err
+					}
+					args[key] = value
+				} else {
+					return nil, fmt.Errorf("unexpcted field %q for %q", key, input.Name)
+				}
+			}
+			return Convert(args, typ)
 		}
 		return nil, fmt.Errorf("expected arg map but got %v", args)
 	}
@@ -512,6 +529,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (func(args interface{}) 
 			return nil, nil, fmt.Errorf("arg field name must can exproted, but %s not", name)
 		}
 		var desc string
+		var nonnull bool
 		if tag := field.Tag.Get("graphql"); tag == "-" {
 			continue
 		} else if tag != "" {
@@ -520,81 +538,121 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (func(args interface{}) 
 			if len(split) > 1 {
 				desc = split[1]
 			}
+			if len(split) > 2 {
+				nonnull = split[2] == "nonnull"
+			}
 		}
 		fieldTyp, err := sb.getType(field.Type)
 		if err != nil {
 			return nil, nil, err
 		}
-		argResolve, defaultVal, err := sb.getArgResolve(fieldTyp)
+		if nonnull {
+			fieldTyp = &system.NonNull{Type: fieldTyp}
+		}
+		argResolve, err := sb.getArgResolve(fieldTyp)
 		if err != nil {
 			return nil, nil, err
 		}
 		resolve[name] = argResolve
 		args[name] = &system.Argument{
-			Name:         name,
-			Type:         fieldTyp,
-			Desc:         desc,
-			DefaultValue: defaultVal,
+			Name: name,
+			Type: fieldTyp,
+			Desc: desc,
 		}
 	}
-	return func(args interface{}) (interface{}, error) {
-		if m, ok := args.(map[string]interface{}); ok {
-			strval := strbuilder.EmptyBuilder
-			for key, val := range m {
+	return func(arg interface{}) (interface{}, error) {
+		if arg == nil {
+			arg = make(map[string]interface{})
+		}
+		for name, argument := range args {
+			if arg.(map[string]interface{})[name] == nil && argument.DefaultValue != nil {
+				arg.(map[string]interface{})[name] = argument.DefaultValue
+			}
+		}
+		if arg, ok := arg.(map[string]interface{}); ok {
+			for key, val := range arg {
 				value, err := resolve[key](val)
 				if err != nil {
 					return nil, err
 				}
-				strval = strbuilder.Set(strval, key, value).(strbuilder.Builder)
+				arg[key] = value
 			}
-			return strbuilder.GetStructLikeByTag(strval, reflect.New(typ).Elem().Interface(), "graphql", ","), nil
+			return Convert(arg, typ)
 		}
-		return nil, fmt.Errorf("expected arg map but got %v", args)
+		return nil, fmt.Errorf("expected arg map but got %v", arg)
 	}, args, nil
 }
 
-func (sb *schemaBuilder) getArgResolve(typ system.Type) (func(interface{}) (interface{}, error), interface{}, error) {
+func (sb *schemaBuilder) getArgResolve(typ system.Type) (func(interface{}) (interface{}, error), error) {
 	switch typ := typ.(type) {
 	case *system.Scalar:
-		return typ.ParseValue, scalarDefault[typ.Name], nil
+		return func(value interface{}) (interface{}, error) {
+			if value == nil {
+				return nil, nil
+			}
+			return typ.ParseValue(value)
+		}, nil
 	case *system.Enum:
 		return func(value interface{}) (interface{}, error) {
+			if value == nil {
+				return nil, nil
+			}
 			if _, ok := value.(string); !ok {
 				return nil, fmt.Errorf("enum value must be string")
 			}
 			return typ.ReverseMap[value.(string)], nil
-		}, nil, nil
+		}, nil
 	case *system.InputObject:
 		return func(value interface{}) (interface{}, error) {
+			if value == nil {
+				return nil, nil
+			}
 			if f, ok := sb.inputObjResolve[typ.Name]; ok {
 				return f(value)
 			}
 			return nil, nil
-		}, nil, nil
+		}, nil
 	case *system.NonNull:
-		return sb.getArgResolve(typ.Type)
+		return func(value interface{}) (interface{}, error) {
+			if value == nil {
+				return nil, fmt.Errorf("cannot be null for nonnullable input arg: %s", typ.String())
+			}
+			resolve, err := sb.getArgResolve(typ.Type)
+			if err != nil {
+				return nil, err
+			}
+			return resolve(value)
+		}, nil
 	case *system.List:
-		resolve, _, err := sb.getArgResolve(typ.Type)
+		resolve, err := sb.getArgResolve(typ.Type)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		return func(value interface{}) (interface{}, error) {
-			if value, ok := value.([]interface{}); ok {
-				res := make([]interface{}, len(value))
-				for index, val := range value {
-					val, err := resolve(val)
-					if err != nil {
-						return nil, err
-					}
-					res[index] = val
-				}
-				return res, nil
-			} else {
-				return nil, fmt.Errorf("arg expected slice but got %v", value)
+			if value == nil {
+				return nil, nil
 			}
-		}, nil, nil
+			v := reflect.ValueOf(value)
+			var val []interface{}
+			if v.Kind() != reflect.Slice {
+				val = append(val, value)
+			} else {
+				for i := 0; i < v.Len(); i++ {
+					val = append(val, v.Index(i).Interface())
+				}
+			}
+			var res []interface{}
+			for _, ival := range val {
+				ival, err := resolve(ival)
+				if err != nil {
+					return nil, err
+				}
+				res = append(res, ival)
+			}
+			return res, nil
+		}, nil
 	default:
-		return nil, nil, fmt.Errorf("object field type can not be interface,union and object")
+		return nil, fmt.Errorf("object field type can not be interface,union and object")
 	}
 }
 
@@ -767,8 +825,8 @@ func (funcCtx *funcContext) prepareResolveArgs(source interface{}, hasArgs bool,
 		ptrSource := sourceValue.Kind() == reflect.Ptr
 		switch {
 		case funcCtx.sourceInterface &&
-			(ptrSource && (sourceTyp.Implements(funcCtx.typ) || sourceTyp.Elem().Implements(funcCtx.typ))) ||
-			(!ptrSource && (sourceTyp.Implements(funcCtx.typ) || reflect.PtrTo(sourceTyp).Implements(funcCtx.typ))):
+			((ptrSource && (sourceTyp.Implements(funcCtx.typ) || sourceTyp.Elem().Implements(funcCtx.typ))) ||
+				(!ptrSource && (sourceTyp.Implements(funcCtx.typ) || reflect.PtrTo(sourceTyp).Implements(funcCtx.typ)))):
 			in = append(in, sourceValue.Convert(funcCtx.typ))
 		case ptrSource && !funcCtx.isPtrFunc:
 			in = append(in, sourceValue.Elem())
@@ -847,26 +905,4 @@ var scalars = map[string]*Scalar{
 	"Time":      Time,
 	"Bytes":     Bytes,
 	"AnyScalar": AnyScalar,
-}
-
-var scalarDefault = map[string]interface{}{
-	"Boolean":   false,
-	"Int":       0,
-	"Int8":      int8(0),
-	"Int16":     int16(0),
-	"Int32":     int32(0),
-	"Int64":     int64(0),
-	"Uint":      uint(0),
-	"Uint8":     uint8(0),
-	"Uint16":    uint16(0),
-	"Uint32":    uint32(0),
-	"Uint64":    uint64(0),
-	"Float":     float32(0),
-	"Float64":   float64(0),
-	"String":    "",
-	"ID":        Id{},
-	"Map":       MMap{},
-	"Time":      time.Time{},
-	"Bytes":     []byte{},
-	"AnyScalar": nil,
 }

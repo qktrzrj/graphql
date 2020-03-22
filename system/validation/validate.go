@@ -65,7 +65,7 @@ func newContext(s *system.Schema, doc *system.Document, maxDepth int) *context {
 	}
 }
 
-func Validate(s *system.Schema, doc *system.Document, vars map[string]interface{}, maxDepth int) []*errors.GraphQLError {
+func Validate(s *system.Schema, doc *system.Document, vars map[string]interface{}, maxDepth int) (multierrs errors.MultiError) {
 	if doc == nil {
 		return []*errors.GraphQLError{errors.New("Must provide document")}
 	}
@@ -73,6 +73,12 @@ func Validate(s *system.Schema, doc *system.Document, vars map[string]interface{
 		return []*errors.GraphQLError{errors.New("Must provide schema")}
 	}
 	ctx := newContext(s, doc, maxDepth)
+	defer func() {
+		if r := recover(); r != nil {
+			ctx.addErr(errors.Location{}, "", fmt.Sprintf("%s", r))
+		}
+		multierrs = ctx.errs
+	}()
 
 	opNames := make(nameSet)
 	fragUsedBy := make(map[*ast.FragmentDefinition][]*ast.OperationDefinition)
@@ -112,29 +118,28 @@ func Validate(s *system.Schema, doc *system.Document, vars map[string]interface{
 				typeName := v.Type.String()
 				ctx.addErr(v.Loc, "Variables Are Input Types", `Variable "$%s" cannot be non-input type "%s".`, variableName, typeName)
 			}
-
+			value := vars[v.Var.Name.Name]
 			if v.DefaultValue != nil {
 				validateLiteral(opc, v.DefaultValue)
 
 				if vTyp != nil {
-					if nn, ok := vTyp.(*system.NonNull); ok {
-						ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", "Variable %q of type %q is required and will not use the default value. Perhaps you meant to use type %q.", "$"+v.Var.Name.Name, vTyp, nn.Type)
-					} else if vars[variableName] == nil {
-						value, err := system.ValueToJson(v.DefaultValue, nil)
-						if err != nil {
+					//if nn, ok := vTyp.(*system.NonNull); ok {
+					//	ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", "Variable %q of type %q is required and will not use the default value. Perhaps you meant to use type %q.", "$"+v.Var.Name.Name, vTyp, nn.Type)
+					if _, ok := vars[variableName]; !ok {
+						var err error
+						value, err = system.ValueToJson(v.DefaultValue, nil)
+						if err != nil && err != (*errors.GraphQLError)(nil) {
 							ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", err.Error())
-						} else {
-							vars[variableName] = value
+							value = nil
 						}
 					}
 
 					if ok, reason := validateValueType(opc, v.DefaultValue, vTyp); !ok {
-						ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", "Variable %q of type %q has invalid default value %s.\n%s", "$"+v.Var.Name.Name, vTyp, v.DefaultValue, reason)
+						ctx.addErr(v.DefaultValue.Location(), "DefaultValuesOfCorrectType", "Variable %q of type %q has invalid default value %s.\n%s", "$"+v.Var.Name.Name, vTyp.String(), v.DefaultValue, reason)
 					}
 				}
 			}
-
-			validateValue(opc, v, vars[v.Var.Name.Name], vTyp)
+			validateValue(opc, v, value, vTyp)
 		}
 
 		var obj *system.Object
@@ -200,7 +205,7 @@ func Validate(s *system.Schema, doc *system.Document, vars map[string]interface{
 		}
 	}
 
-	return ctx.errs
+	return
 }
 
 type nameSet map[string]errors.Location
@@ -522,24 +527,28 @@ func detectFragmentCycleSel(c *context, sel ast.Selection, fragVisited map[*ast.
 	}
 }
 
-func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, vtyp system.Type) {
+func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, vtyp system.Type, names ...string) {
+	name := v.Var.Name.Name
+	if len(names) > 0 {
+		name = names[0]
+	}
 	switch vtyp := vtyp.(type) {
 	case *system.NonNull:
 		if val == nil {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value null.\nExpected type \"%s\", found null.", v.Var.Name.Name, vtyp)
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value null.\nExpected type \"%s\", found null.", name, vtyp.String())
 			return
 		}
 		validateValue(ctx, v, val, vtyp.Type)
 	case *system.List:
-		if vtyp == nil {
+		if val == nil {
 			return
 		}
 		vv, ok := val.([]interface{})
 		if !ok {
 			validateValue(ctx, v, val, vtyp.Type)
 		}
-		for _, vi := range vv {
-			validateValue(ctx, v, vi, vtyp.Type)
+		for index, vi := range vv {
+			validateValue(ctx, v, vi, vtyp.Type, fmt.Sprintf("%s[%d]", v.Var.Name.Name, index))
 		}
 	case *system.Enum:
 		if val == nil {
@@ -547,7 +556,7 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 		}
 		e, ok := val.(string)
 		if !ok {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %v.", v.Var.Name.Name, val, vtyp, val)
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %v.", name, val, vtyp, val)
 			return
 		}
 		for _, option := range vtyp.Values {
@@ -555,19 +564,37 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 				return
 			}
 		}
-		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", v.Var.Name.Name, e, vtyp, e)
+		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", name, e, vtyp.String(), e)
+	case *system.Scalar:
+		if val == nil {
+			return
+		}
+		_, err := vtyp.ParseValue(val)
+		if err != nil {
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %v.\nExpected type \"%s\", found %v.", name, val, vtyp.String(), val)
+		}
 	case *system.InputObject:
 		if val == nil {
 			return
 		}
 		in, ok := val.(map[string]interface{})
 		if !ok {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %s.", v.Var.Name.Name, val, vtyp, val)
+			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid type %T.\nExpected type \"%s\", found %s.", name, val, vtyp, val)
 			return
 		}
-		for _, f := range vtyp.Fields {
-			fieldVal := in[f.Name]
-			validateValue(ctx, v, fieldVal, f.Type)
+		for argName, arg := range in {
+			if f, ok := vtyp.Fields[argName]; !ok {
+				ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" got invalid value %v; Field %q is not defined by type %q", name, val, argName, vtyp.Name)
+				return
+			} else {
+				validateValue(ctx, v, arg, f.Type, f.Name)
+			}
+
+		}
+		for fname, f := range vtyp.Fields {
+			if _, ok := in[fname]; !ok {
+				validateValue(ctx, v, nil, f.Type, fname)
+			}
 		}
 	}
 }
@@ -693,7 +720,7 @@ func validateValueType(c *opContext, v ast.Value, t system.Type) (bool, string) 
 	case *system.InputObject:
 		v, ok := v.(*ast.ObjectValue)
 		if !ok {
-			return false, fmt.Sprintf("Expected %q, found not an object.", t)
+			return false, fmt.Sprintf("Expected %q, found not an object.", t.String())
 		}
 		for _, f := range v.Fields {
 			name := f.Name.Name
@@ -836,10 +863,8 @@ func validateBasicValue(ctx *opContext, v ast.Value, t system.Type) bool {
 		if v.GetKind() != kinds.EnumValue {
 			return false
 		}
-		for _, option := range t.Values {
-			if option == v.GetValue() {
-				return true
-			}
+		if _, ok := t.ReverseMap[v.GetValue().(string)]; ok {
+			return true
 		}
 		return false
 	}

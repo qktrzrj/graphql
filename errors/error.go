@@ -32,8 +32,13 @@ type MultiError []*GraphQLError
 
 func (m MultiError) Error() string {
 	var res string
-	for _, err := range m {
-		res += err.Error() + "\n"
+	if len(m) > 0 {
+		res = "[" + m[0].Error()
+		for _, err := range m[1:] {
+			res += "\n"
+			res += err.Error()
+		}
+		res += "]"
 	}
 	return res
 }

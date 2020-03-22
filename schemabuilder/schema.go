@@ -63,7 +63,7 @@ var DescFieldTyp = reflect.TypeOf(DescField{})
 //     "two":   enumType(2),
 //     "three": enumType(3),
 //   },"")
-func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface{}, desc string) {
+func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface{}, descs ...string) {
 	if name == "" {
 		panic("enum must provide name")
 	}
@@ -96,6 +96,10 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 		rMap[valInterface] = key
 		dMap[key] = desc
 	}
+	var desc string
+	if len(descs) > 0 {
+		desc = descs[0]
+	}
 	s.enums[name] = &Enum{
 		Name:       name,
 		Desc:       desc,
@@ -110,7 +114,7 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 // We'll read the fields of the struct to determine it's basic "Fields" and
 // we'll return an Object struct that we can use to register custom
 // relationships and fields on the object.
-func (s *Schema) Object(name string, typ interface{}, desc string) *Object {
+func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
 	objTyp := reflect.TypeOf(typ)
 	if name == "" {
 		name = objTyp.Name()
@@ -122,6 +126,10 @@ func (s *Schema) Object(name string, typ interface{}, desc string) *Object {
 				" %s.%s", t.PkgPath(), t.Name()))
 		}
 		return object
+	}
+	var desc string
+	if len(descs) > 0 {
+		desc = descs[0]
 	}
 	object := &Object{
 		Name:         name,
@@ -234,6 +242,9 @@ func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...Unmarsh
 		}
 	}
 	parseValue := func(i interface{}) (interface{}, error) {
+		if i == nil {
+			return nil, nil
+		}
 		outVal := reflect.New(typ).Elem()
 		err := ufn[0](i, outVal)
 		return outVal.Interface(), err
@@ -363,17 +374,15 @@ func (s *Schema) Subscription() *Object {
 // We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
 func (s *Schema) Build() (*system.Schema, error) {
-	s.Query()
-	s.Mutation()
-	s.Subscription()
 	sb := &schemaBuilder{
-		types:        make(map[reflect.Type]system.Type),
-		objects:      make(map[reflect.Type]*Object, len(s.objects)),
-		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
-		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
-		interfaces:   make(map[reflect.Type]*Interface, len(s.interfaces)),
-		scalars:      make(map[reflect.Type]*Scalar, len(s.scalars)),
-		unions:       make(map[reflect.Type]*Union, len(s.unions)),
+		types:           make(map[reflect.Type]system.Type),
+		objects:         make(map[reflect.Type]*Object, len(s.objects)),
+		enums:           make(map[reflect.Type]*Enum, len(s.enums)),
+		inputObjects:    make(map[reflect.Type]*InputObject, len(s.inputObjects)),
+		interfaces:      make(map[reflect.Type]*Interface, len(s.interfaces)),
+		scalars:         make(map[reflect.Type]*Scalar, len(s.scalars)),
+		unions:          make(map[reflect.Type]*Union, len(s.unions)),
+		inputObjResolve: make(map[string]func(interface{}) (interface{}, error)),
 	}
 
 	directives := make(map[string]*system.Directive, len(s.directives))
@@ -461,6 +470,7 @@ func (s *Schema) Build() (*system.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	subscriptionTyp, err := sb.getType(reflect.TypeOf(&Subscription{}))
 	if err != nil {
 		return nil, err
