@@ -33,6 +33,7 @@ type Human struct {
 }
 
 func BenchmarkExecutor_Execute(b *testing.B) {
+	b.ReportAllocs()
 	build := schemabuilder.NewSchema()
 	PetType := build.Interface("Pet", new(Pet), nil, "")
 	PetType.FieldFunc("name", func(source Pet) string { return source.GetName() }, "")
