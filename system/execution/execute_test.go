@@ -47,10 +47,10 @@ func TestExecutor_Execute(t *testing.T) {
 			PetType.FieldFunc("name", func(source Pet) string { return source.GetName() }, "")
 
 			DogType := build.Object("Dog", Dog{}, "")
-			DogType.InterfaceFunc(PetType)
+			DogType.InterfaceList(PetType)
 
 			CatType := build.Object("Cat", Cat{}, "")
-			CatType.InterfaceFunc(PetType)
+			CatType.InterfaceList(PetType)
 
 			build.Query().FieldFunc("pets", func() []Pet {
 				return []Pet{Dog{"Odie", true}, Cat{"Garfield", false}}

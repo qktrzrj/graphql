@@ -200,7 +200,7 @@ func init() {
 	}, "")
 
 	dog := schema.Object("Dog", Dog{}, "")
-	dog.InterfaceFunc(being, pet, mammal, canine)
+	dog.InterfaceList(being, pet, mammal, canine)
 	dog.FieldFunc("name", func(source *Dog, args struct {
 		Surname bool `graphql:"surname"`
 	}) string {
@@ -244,7 +244,7 @@ func init() {
 	intelligent.FieldFunc("iq", func(source Intelligent) int { return source.Iq() }, "")
 
 	human := schema.Object("Human", Human{}, "")
-	human.InterfaceFunc(being, intelligent)
+	human.InterfaceList(being, intelligent)
 	human.FieldFunc("name", func(source *Human, args struct {
 		Surname bool `graphql:"surname"`
 	}) string {
@@ -253,7 +253,7 @@ func init() {
 	human.FieldFunc("iq", func(source *Human) int { return source.Iq() }, "")
 
 	alien := schema.Object("Alien", Alien{}, "")
-	alien.InterfaceFunc(being, intelligent)
+	alien.InterfaceList(being, intelligent)
 	alien.FieldFunc("iq", func(source *Alien) int { return source.Iq() }, "")
 	alien.FieldFunc("name", func(source *Alien, args struct {
 		Surname bool `graphql:"surname"`
@@ -311,8 +311,7 @@ func init() {
 	complicatedArgs.FieldFunc("idArgField", func(args struct {
 		IdArg schemabuilder.Id `graphql:"idArg"`
 	}) string {
-		bytes, _ := args.IdArg.MarshalJSON()
-		return string(bytes)
+		return fmt.Sprintf("%s", args.IdArg.Value)
 	}, "")
 	complicatedArgs.FieldFunc("stringListArgField", func(args struct {
 		StringListArg []string `graphql:"stringListArg"`

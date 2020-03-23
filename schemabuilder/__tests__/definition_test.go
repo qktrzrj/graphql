@@ -102,7 +102,9 @@ func TestObject(t *testing.T) {
 		object := builder.Object("Object", Object{}, "")
 		object.FieldFunc("field2", func(args struct {
 			Input InputObject `graphql:"input"`
-		}) Scalar { return args.Input.Field2 }, "")
+		}) Scalar {
+			return args.Input.Field2
+		}, "")
 		inputObject := builder.InputObject("InputObject", InputObject{}, "")
 		inputObject.FieldDefault("field2", Scalar{Value: "default"})
 		builder.Query().FieldFunc("Object", func() Object { return Object{} }, "")
@@ -136,7 +138,7 @@ func TestObject(t *testing.T) {
 		object := builder.Object("SomeObject", Object{}, "")
 		Inter := builder.Interface("Interface", new(Interface), nil, "")
 		Inter.FieldFunc("Fields", func() {}, "")
-		object.InterfaceFunc(Inter)
+		object.InterfaceList(Inter)
 		builder.Query().FieldFunc("SomeObject", func() Object { return Object{} }, "")
 		schema, err := builder.Build()
 		assert.NoError(t, err)
@@ -160,7 +162,7 @@ func TestInterface(t *testing.T) {
 			}
 			return nil
 		}, "")
-		object.InterfaceFunc(Inter)
+		object.InterfaceList(Inter)
 		builder.Query().FieldFunc("SomeObject", func() Object { return Object{} }, "")
 		schema, err := builder.Build()
 		assert.NoError(t, err)

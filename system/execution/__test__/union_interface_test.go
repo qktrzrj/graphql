@@ -154,7 +154,7 @@ func Init2() {
 	LifeType.FieldFunc("progeny", func(source Life) []Life { return source.GetProgeny() }, "")
 
 	MammalType := build.Interface("Mammal", new(Mammal), nil, "")
-	MammalType.InterfaceFunc(LifeType)
+	MammalType.InterfaceList(LifeType)
 	MammalType.FieldFunc("progeny", func(source Mammal) []Mammal {
 		var mammal []Mammal
 		for _, l := range source.GetProgeny() {
@@ -166,15 +166,15 @@ func Init2() {
 	MammalType.FieldFunc("father", func(source Mammal) Mammal { return source.GetFather() }, "")
 
 	DogType := build.Object("Dog", Dog{}, "")
-	DogType.InterfaceFunc(MammalType, LifeType, NamedType)
+	DogType.InterfaceList(MammalType, LifeType, NamedType)
 
 	CatType := build.Object("Cat", Cat{}, "")
-	CatType.InterfaceFunc(MammalType, LifeType, NamedType)
+	CatType.InterfaceList(MammalType, LifeType, NamedType)
 
 	build.Union("Pet", Pet{}, "")
 
 	PersonType := build.Object("Person", Person{}, "")
-	PersonType.InterfaceFunc(MammalType, NamedType, LifeType)
+	PersonType.InterfaceList(MammalType, NamedType, LifeType)
 	PersonType.FieldFunc("progeny", func(source *Person) []*Person {
 		var ps []*Person
 		for _, i := range source.GetProgeny() {

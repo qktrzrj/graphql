@@ -83,7 +83,7 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 		if val.Kind() != typ.Kind() {
 			if val == DescFieldTyp {
 				value := reflect.ValueOf(valInterface)
-				desc = value.FieldByName("Desc").String()
+				desc = value.FieldByName("desc").String()
 				valInterface = value.FieldByName("Field").Interface()
 				if reflect.TypeOf(valInterface).Kind() != typ.Kind() {
 					panic("enum descField's field types are not equal")
@@ -135,7 +135,7 @@ func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
 		Name:         name,
 		Desc:         desc,
 		Type:         typ,
-		FieldResolve: map[string]*fieldResolve{},
+		FieldResolve: map[string]*FieldResolve{},
 		ArgDefault:   map[string]map[string]interface{}{},
 		Interface:    []*Interface{},
 	}

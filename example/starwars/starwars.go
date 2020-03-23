@@ -212,21 +212,25 @@ func main() {
 	humanType := builder.Object("Human", Human{}, "A humanoid creature in the Star Wars universe.")
 	humanType.FieldFunc("friends", func(human *Human) []Character { return getFriends(human) }, "The friends of the human, or an empty list if they have none.")
 	humanType.FieldFunc("secretBackstory", func() (*string, error) { return nil, errors.New("secretBackstory is secret.") }, "Where are they from and how they came to be who they are.")
-	humanType.InterfaceFunc(characterInterface)
+	humanType.InterfaceList(characterInterface)
 
 	droidType := builder.Object("Droid", Droid{}, "A mechanical creature in the Star Wars universe.")
 	droidType.FieldFunc("friends", func(droid *Droid) []Character { return getFriends(droid) }, "The friends of the droid, or an empty list if they have none.")
 	droidType.FieldFunc("secretBackstory", func() (*string, error) { return nil, errors.New("secretBackstory is secret.") }, "Construction date and the name of the designer.")
-	droidType.InterfaceFunc(characterInterface)
+	droidType.InterfaceList(characterInterface)
 
 	query := builder.Query()
 	query.FieldFunc("hero", getHero, "")
 	query.FieldFunc("human", func(args struct {
 		Id string `graphql:"id;id of the human"`
-	}) *Human { return getHuman(args.Id) }, "")
+	}) *Human {
+		return getHuman(args.Id)
+	}, "")
 	query.FieldFunc("droid", func(args struct {
 		Id string `graphql:"id;id of the droid"`
-	}) *Droid { return getDroid(args.Id) }, "")
+	}) *Droid {
+		return getDroid(args.Id)
+	}, "")
 
 	schema := builder.MustBuild()
 	introspection.AddIntrospectionToSchema(schema)

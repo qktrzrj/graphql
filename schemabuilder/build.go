@@ -170,7 +170,7 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*system.Interface, erro
 		sb.types[reflect.PtrTo(typ)] = iface
 		fields := make(map[string]*system.Field)
 		for name, resolve := range inter.FieldResolve {
-			if mname, ok := resolve.Fn.(string); ok {
+			if mname, ok := resolve.fn.(string); ok {
 				method, ok := typ.MethodByName(mname)
 				if !ok {
 					return nil, fmt.Errorf("%s should be method of %s", mname, typ.String())
@@ -189,7 +189,7 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*system.Interface, erro
 				fields[name] = &system.Field{
 					Name: name,
 					Type: retType,
-					Desc: resolve.Desc,
+					Desc: resolve.desc,
 				}
 				continue
 			}
@@ -285,40 +285,39 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			}
 			if _, ok := obj.FieldResolve[name]; ok {
 				continue
-			} else {
-				fieldTyp, err := sb.getType(field.Type)
-				if err != nil {
-					return err
-				}
-				if _, ok := fieldTyp.(*system.InputObject); ok {
-					return fmt.Errorf("object %s field %s type can not be input object", typ.String(), name)
-				}
-				if nonnull {
-					fieldTyp = &system.NonNull{Type: fieldTyp}
-				}
-				object.Fields[name] = &system.Field{
-					Name: name,
-					Type: fieldTyp,
-					Args: map[string]*system.Argument{},
-					Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
-						if source == nil {
-							return nil, fmt.Errorf("source is nil")
-						}
-						value := reflect.ValueOf(source)
-						if value.Kind() == reflect.Ptr {
-							value = value.Elem()
-						}
-						fieldVal := GetField(value, name)
-						if fieldVal == nil {
-							return nil, fmt.Errorf("can not get field %s", name)
-						}
-						return (*fieldVal).Interface(), nil
-					},
-					Desc: desc,
-				}
-				object.Fields[name].Type = fieldTyp
-
 			}
+
+			fieldTyp, err := sb.getType(field.Type)
+			if err != nil {
+				return err
+			}
+			if _, ok := fieldTyp.(*system.InputObject); ok {
+				return fmt.Errorf("object %s field %s type can not be input object", typ.String(), name)
+			}
+			if nonnull {
+				fieldTyp = &system.NonNull{Type: fieldTyp}
+			}
+			object.Fields[name] = &system.Field{
+				Name: name,
+				Type: fieldTyp,
+				Args: map[string]*system.Argument{},
+				Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
+					if source == nil {
+						return nil, fmt.Errorf("source is nil")
+					}
+					value := reflect.ValueOf(source)
+					if value.Kind() == reflect.Ptr {
+						value = value.Elem()
+					}
+					fieldVal := GetField(value, name)
+					if fieldVal == nil {
+						return nil, fmt.Errorf("can not get field %s", name)
+					}
+					return (*fieldVal).Interface(), nil
+				},
+				Desc: desc,
+			}
+			object.Fields[name].Type = fieldTyp
 		}
 		for _, iface := range obj.Interface {
 			ifaceTyp, err := sb.getType(reflect.TypeOf(iface.Type))
@@ -434,10 +433,10 @@ func (sb *schemaBuilder) builInputObject(typ reflect.Type) error {
 	return nil
 }
 
-func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*system.Field, error) {
+func (sb *schemaBuilder) getField(fnresolve *FieldResolve, src reflect.Type) (*system.Field, error) {
 	fctx := funcContext{typ: src}
 
-	callableFunc, err := fctx.getFuncVal(fnresolve.Fn)
+	callableFunc, err := fctx.getFuncVal(fnresolve.fn)
 	if err != nil {
 		return nil, err
 	}
@@ -480,9 +479,9 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 
 			return fctx.extractResultAndErr(funcOutputArgs, retType)
 		},
-		Desc: fnresolve.Desc,
+		Desc: fnresolve.desc,
 	}
-	for _, handler := range fnresolve.HandleChain {
+	for _, handler := range fnresolve.handleChain {
 		field.HandlersChain = append(field.HandlersChain, func(ctx context.Context) error {
 			return handler(ctx)
 		})
@@ -762,7 +761,7 @@ func (funcCtx *funcContext) getArgParserAndTyp(sb *schemaBuilder, in []reflect.T
 }
 
 // parseReturnSignature reads and validates the return signature of the function to determine whether it has a return type and/or an error response.
-func (funcCtx *funcContext) parseReturnSignature(r *fieldResolve) (err error) {
+func (funcCtx *funcContext) parseReturnSignature(r *FieldResolve) (err error) {
 	out := make([]reflect.Type, 0, funcCtx.funcType.NumOut())
 	for i := 0; i < funcCtx.funcType.NumOut(); i++ {
 		out = append(out, funcCtx.funcType.Out(i))
@@ -798,7 +797,7 @@ func (funcCtx *funcContext) parseReturnSignature(r *fieldResolve) (err error) {
 
 // getReturnType returns a GraphQL node type for the return type of the function.  So an object "User" that has a linked function which returns a
 // list of "Hats" will resolve the GraphQL type of a "Hat" at this point.
-func (funcCtx *funcContext) getReturnType(sb *schemaBuilder, m *fieldResolve) (system.Type, error) {
+func (funcCtx *funcContext) getReturnType(sb *schemaBuilder, m *FieldResolve) (system.Type, error) {
 	var retType system.Type
 	if funcCtx.returnsFunc {
 		function := funcCtx.funcType.Out(0)
@@ -930,7 +929,7 @@ var scalars = map[string]*Scalar{
 	"Float64":   Float64,
 	"String":    String,
 	"ID":        ID,
-	"Map":       Map,
+	"Map":       MMap,
 	"Time":      Time,
 	"Bytes":     Bytes,
 	"AnyScalar": AnyScalar,

@@ -18,7 +18,7 @@ type Object struct {
 	Name         string
 	Desc         string
 	Type         interface{}
-	FieldResolve map[string]*fieldResolve
+	FieldResolve map[string]*FieldResolve
 	ArgDefault   map[string]map[string]interface{}
 	Interface    []*Interface
 }
@@ -35,12 +35,10 @@ type HandleFunc func(ctx context.Context) error
 
 // FieldFuncOption is an func for the variadic options that can be passed
 // to a FieldDefault for configuring options on that function.
-type FieldFuncOption func(resolve ...*fieldResolve) HandleFunc
+type FieldFuncOption func(*FieldResolve) HandleFunc
 
-var NonNullField FieldFuncOption = func(resolve ...*fieldResolve) HandleFunc {
-	if len(resolve) > 0 {
-		resolve[0].MarkedNonNullable = true
-	}
+var NonNullField FieldFuncOption = func(resolve *FieldResolve) HandleFunc {
+	resolve.MarkedNonNullable = true
 	return nil
 }
 
@@ -61,7 +59,7 @@ type Interface struct {
 	Type          interface{}
 	Fn            interface{}
 	PossibleTypes map[string]*Object
-	FieldResolve  map[string]*fieldResolve
+	FieldResolve  map[string]*FieldResolve
 	Interface     []*Interface
 }
 
@@ -111,14 +109,19 @@ type Directive struct {
 //    })
 func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOption ...FieldFuncOption) {
 	if s.FieldResolve == nil {
-		s.FieldResolve = make(map[string]*fieldResolve)
+		s.FieldResolve = make(map[string]*FieldResolve)
 	}
 
-	resolve := &fieldResolve{Fn: fn, Desc: desc}
+	if _, ok := s.FieldResolve[name]; ok {
+		panic("duplicate method")
+	}
+
+	resolve := &FieldResolve{fn: fn, desc: desc}
 	for _, opt := range fieldFuncOption {
+
 		handleFunc := opt(resolve)
 		if handleFunc != nil {
-			resolve.HandleChain = append(resolve.HandleChain, handleFunc)
+			resolve.handleChain = append(resolve.handleChain, handleFunc)
 		}
 	}
 
@@ -130,7 +133,7 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 
 func (s *Object) FieldArgsDefault(field, argName string, defaultValue interface{}) {
 	if s.ArgDefault[field] == nil {
-		s.ArgDefault[field] = map[string]interface{}{}
+		s.ArgDefault[field] = make(map[string]interface{})
 	}
 	if _, ok := s.ArgDefault[field][argName]; ok {
 		panic("duplicate arg default " + argName)
@@ -159,8 +162,8 @@ func (io *Directive) FieldDefault(name string, defaultValue interface{}) {
 	io.Fields[name] = resolve
 }
 
-// InterfaceFunc exposes a interface on an object.
-func (s *Object) InterfaceFunc(list ...*Interface) {
+// InterfaceList exposes a interface on an object.
+func (s *Object) InterfaceList(list ...*Interface) {
 	for _, i := range list {
 		interfaceTyp := reflect.TypeOf(i.Type)
 		if interfaceTyp.Kind() == reflect.Ptr {
@@ -177,7 +180,7 @@ func (s *Object) InterfaceFunc(list ...*Interface) {
 // similar as object's func, but haven't middleware func , and given name must be same as interface's method
 func (s *Interface) FieldFunc(name string, fn interface{}, descs ...string) {
 	if s.FieldResolve == nil {
-		s.FieldResolve = make(map[string]*fieldResolve)
+		s.FieldResolve = make(map[string]*FieldResolve)
 	}
 
 	if _, ok := s.FieldResolve[name]; ok {
@@ -187,12 +190,12 @@ func (s *Interface) FieldFunc(name string, fn interface{}, descs ...string) {
 	if len(descs) > 0 {
 		desc = descs[0]
 	}
-	resolve := &fieldResolve{Fn: fn, Desc: desc}
+	resolve := &FieldResolve{fn: fn, desc: desc}
 	s.FieldResolve[name] = resolve
 }
 
-// InterfaceFunc exposes a interface on an Interface.
-func (s *Interface) InterfaceFunc(list ...*Interface) {
+// InterfaceList exposes a interface on an Interface.
+func (s *Interface) InterfaceList(list ...*Interface) {
 	for _, i := range list {
 		interfaceTyp := reflect.TypeOf(i.Type)
 		if interfaceTyp.Kind() == reflect.Ptr {
@@ -210,11 +213,11 @@ func (s *Scalar) LiteralFunc(fn func(value ast.Value) error) {
 	s.ParseLiteral = fn
 }
 
-type fieldResolve struct {
+type FieldResolve struct {
 	MarkedNonNullable bool
-	Fn                interface{}
-	Desc              string
-	HandleChain       []HandleFunc
+	fn                interface{}
+	desc              string
+	handleChain       []HandleFunc
 }
 
 type inputFieldResolve struct {
@@ -606,11 +609,11 @@ var ID = &Scalar{
 	},
 }
 
-type MMap struct {
+type Map struct {
 	Value string
 }
 
-func (m *MMap) MarshalJSON() ([]byte, error) {
+func (m *Map) MarshalJSON() ([]byte, error) {
 	v := base64.StdEncoding.EncodeToString([]byte(m.Value))
 	d, err := json.Marshal(v)
 	if err != nil {
@@ -619,10 +622,10 @@ func (m *MMap) MarshalJSON() ([]byte, error) {
 	return d, nil
 }
 
-var Map = &Scalar{
+var MMap = &Scalar{
 	Name:      "Map",
 	Desc:      `map type, use as {"a":value}`,
-	Type:      MMap{},
+	Type:      Map{},
 	Serialize: Serialize,
 	ParseValue: func(value interface{}) (interface{}, error) {
 		v, ok := value.(string)
@@ -633,7 +636,7 @@ var Map = &Scalar{
 				return nil, errors.New("not a string")
 			}
 		}
-		mmap := MMap{Value: v}
+		mmap := Map{Value: v}
 		return mmap, nil
 	},
 }

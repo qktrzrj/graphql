@@ -283,7 +283,9 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 			resolved, err := e.resolveAndExecute(ctx, field, source, selection)
 			if err != nil {
 				ctx.addErr(selection.Loc, err)
+				mutex.Lock()
 				fields[selection.Alias] = nil
+				mutex.Unlock()
 				return nil
 			}
 			mutex.Lock()
@@ -357,8 +359,7 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 	if value.Kind() == reflect.Ptr && value.IsNil() {
 		return nil, nil
 	}
-	fields := make(map[string]interface{})
-	mutex := new(sync.RWMutex)
+
 	var object *system.Object
 	if typ.TypeResolve != nil {
 		object = typ.TypeResolve(ctx, source)
@@ -401,6 +402,8 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 	if err != nil {
 		return nil, err
 	}
+	fields := make(map[string]interface{})
+	mutex := new(sync.RWMutex)
 	// for every selection, resolve the value and store it in the output object
 	group := new(errgroup.Group)
 	for _, s := range selections {
