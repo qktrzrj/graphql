@@ -7,6 +7,7 @@ import (
 	"github.com/unrotten/graphql/system/introspection"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 )
 
 type Episode int
