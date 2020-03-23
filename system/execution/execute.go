@@ -29,6 +29,7 @@ type exeContext struct {
 	context.Context
 	errs errors.MultiError
 	path []interface{}
+	sync.Mutex
 }
 
 func (e *exeContext) addErr(location errors.Location, err error) {
@@ -38,9 +39,17 @@ func (e *exeContext) addErr(location errors.Location, err error) {
 		Locations:     []errors.Location{location},
 		Path:          e.path,
 	})
-	if len(e.path) > 0 {
-		e.path = append([]interface{}{}, e.path[:len(e.path)-1]...)
+}
+
+func (e *exeContext) updatePath(add bool, path ...interface{}) {
+	e.Lock()
+	defer e.Unlock()
+	if add {
+		e.path = append(e.path, path...)
+	} else if len(e.path) > 0 {
+		e.path = e.path[:len(e.path)-1]
 	}
+	return
 }
 
 type Params struct {
@@ -173,11 +182,9 @@ func (e *Executor) executeUnion(ctx *exeContext, typ *system.Union, source inter
 		for _, s := range selectionSet.Selections {
 			selection := s
 			group.Go(func() error {
-				ctx.path = append(ctx.path, selection.Name)
+				ctx.updatePath(true, selection.Name)
 				defer func() {
-					if len(ctx.path) > 0 {
-						ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
-					}
+					ctx.updatePath(false)
 				}()
 				if selection.Name == "__typename" {
 					mutex.Lock()
@@ -206,11 +213,9 @@ func (e *Executor) executeUnion(ctx *exeContext, typ *system.Union, source inter
 		for _, f := range selectionSet.Fragments {
 			fragment := f
 			group.Go(func() error {
-				ctx.path = append(ctx.path, fragment.Fragment.Name)
+				ctx.updatePath(true, fragment.Fragment.Name)
 				defer func() {
-					if len(ctx.path) > 0 {
-						ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
-					}
+					ctx.updatePath(false)
 				}()
 				if fragment.Fragment.On != typString && fragment.Fragment.On != typ.Name {
 					if _, ok := graphqlTyp.Interfaces[fragment.Fragment.On]; !ok {
@@ -259,11 +264,9 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 	for _, s := range selections {
 		selection := s
 		group.Go(func() error {
-			ctx.path = append(ctx.path, selection.Alias)
+			ctx.updatePath(true, selection.Alias)
 			defer func() {
-				if len(ctx.path) > 0 {
-					ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
-				}
+				ctx.updatePath(false)
 			}()
 			if ok, err := shouldIncludeNode(selection.Directives); err != nil {
 				ctx.addErr(selectionSet.Loc, err)
@@ -409,11 +412,9 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 	for _, s := range selections {
 		selection := s
 		group.Go(func() error {
-			ctx.path = append(ctx.path, selection.Name)
+			ctx.updatePath(true, selection.Name)
 			defer func() {
-				if len(ctx.path) > 0 {
-					ctx.path = append([]interface{}{}, ctx.path[:len(ctx.path)-1]...)
-				}
+				ctx.updatePath(false)
 			}()
 			if selection.Name == "__typename" {
 				mutex.Lock()
