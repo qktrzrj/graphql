@@ -126,15 +126,13 @@ func (sb *schemaBuilder) getType(nodeType reflect.Type) (system.Type, error) {
 func (sb *schemaBuilder) getEnum(typ reflect.Type) *system.Enum {
 	if enum, ok := sb.enums[typ]; ok {
 		var values []string
-		var descs []string
 		for mapping := range enum.Map {
 			values = append(values, mapping)
-			descs = append(descs, enum.DescMap[mapping])
 		}
 		return &system.Enum{
 			Name:       enum.Name,
 			Values:     values,
-			ValuesDesc: descs,
+			ValuesDesc: enum.DescMap,
 			ReverseMap: enum.Map,
 			Map:        enum.ReverseMap,
 			Desc:       enum.Desc,
@@ -160,6 +158,9 @@ func (sb *schemaBuilder) getScalar(typ reflect.Type) *system.Scalar {
 
 func (sb *schemaBuilder) getInterface(typ reflect.Type) (*system.Interface, error) {
 	if inter, ok := sb.interfaces[typ]; ok {
+		if len(inter.FieldResolve) == 0 {
+			return nil, fmt.Errorf("interface %s should had at least one field", inter.Name)
+		}
 		iface := &system.Interface{
 			Name:       inter.Name,
 			Desc:       inter.Desc,
@@ -169,6 +170,29 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*system.Interface, erro
 		sb.types[reflect.PtrTo(typ)] = iface
 		fields := make(map[string]*system.Field)
 		for name, resolve := range inter.FieldResolve {
+			if mname, ok := resolve.Fn.(string); ok {
+				method, ok := typ.MethodByName(mname)
+				if !ok {
+					return nil, fmt.Errorf("%s should be method of %s", mname, typ.String())
+				}
+				fctx := &funcContext{funcType: method.Type}
+				// Parse return values. The first return value must be the actual value, and the second value can optionally be an error.
+				err := fctx.parseReturnSignature(resolve)
+				if err != nil {
+					return nil, err
+				}
+
+				retType, err := fctx.getReturnType(sb, resolve)
+				if err != nil {
+					return nil, err
+				}
+				fields[name] = &system.Field{
+					Name: name,
+					Type: retType,
+					Desc: resolve.Desc,
+				}
+				continue
+			}
 			f, err := sb.getField(resolve, typ)
 			if err != nil {
 				return nil, err
@@ -250,7 +274,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			if tag := field.Tag.Get("graphql"); tag == "-" {
 				continue
 			} else if tag != "" {
-				split := strings.Split(tag, ",")
+				split := strings.Split(tag, ";")
 				name = split[0]
 				if len(split) > 1 {
 					desc = split[1]
@@ -300,6 +324,11 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			ifaceTyp, err := sb.getType(reflect.TypeOf(iface.Type))
 			if err != nil {
 				return err
+			}
+			for f := range ifaceTyp.(*system.Interface).Fields {
+				if _, ok := object.Fields[f]; !ok {
+					return fmt.Errorf("%s must impl interface field %s", object.Name, f)
+				}
 			}
 			object.Interfaces[iface.Name] = ifaceTyp.(*system.Interface)
 		}
@@ -354,7 +383,7 @@ func (sb *schemaBuilder) builInputObject(typ reflect.Type) error {
 		if tag := field.Tag.Get("graphql"); tag == "-" {
 			continue
 		} else if tag != "" {
-			split := strings.Split(tag, ",")
+			split := strings.Split(tag, ";")
 			name = split[0]
 		}
 		var defaultValue interface{}
@@ -533,7 +562,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (func(args interface{}) 
 		if tag := field.Tag.Get("graphql"); tag == "-" {
 			continue
 		} else if tag != "" {
-			split := strings.Split(tag, ",")
+			split := strings.Split(tag, ";")
 			name = split[0]
 			if len(split) > 1 {
 				desc = split[1]

@@ -292,7 +292,7 @@ func (s *Schema) Union(name string, union interface{}, desc string) {
 }
 
 // Interface registers a Interface as a GraphQL Interface in our Schema.
-func (s *Schema) Interface(name string, typ interface{}, typeResolve interface{}, desc string) *Interface {
+func (s *Schema) Interface(name string, typ interface{}, typeResolve interface{}, descs ...string) *Interface {
 	if typ == nil {
 		panic("nil type passed to Interface")
 	}
@@ -308,6 +308,10 @@ func (s *Schema) Interface(name string, typ interface{}, typeResolve interface{}
 	}
 	if _, ok := s.interfaces[name]; ok {
 		panic("duplicate interface " + name)
+	}
+	var desc string
+	if len(descs) > 0 {
+		desc = descs[0]
 	}
 	s.interfaces[name] = &Interface{
 		Name:          name,

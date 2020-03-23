@@ -419,7 +419,7 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 				return nil
 			}
 			field, ok := typ.Fields[selection.Name]
-			if !ok {
+			if !ok || field.Resolve == nil {
 				field, ok = graphqlTyp.Fields[selection.Name]
 				if !ok {
 					return nil

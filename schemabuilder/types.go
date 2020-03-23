@@ -175,7 +175,7 @@ func (s *Object) InterfaceFunc(list ...*Interface) {
 }
 
 // similar as object's func, but haven't middleware func , and given name must be same as interface's method
-func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
+func (s *Interface) FieldFunc(name string, fn interface{}, descs ...string) {
 	if s.FieldResolve == nil {
 		s.FieldResolve = make(map[string]*fieldResolve)
 	}
@@ -183,7 +183,10 @@ func (s *Interface) FieldFunc(name string, fn interface{}, desc string) {
 	if _, ok := s.FieldResolve[name]; ok {
 		panic("duplicate method")
 	}
-
+	var desc string
+	if len(descs) > 0 {
+		desc = descs[0]
+	}
 	resolve := &fieldResolve{Fn: fn, Desc: desc}
 	s.FieldResolve[name] = resolve
 }
