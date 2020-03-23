@@ -35,9 +35,9 @@ func GetVar(vars []*ast.VariableDefinition, name *ast.Name) *ast.VariableDefinit
 	return nil
 }
 
-func GetOperation(ops []*ast.OperationDefinition, name ast.OperationType) *ast.OperationDefinition {
+func GetOperation(ops []*ast.OperationDefinition, name string) *ast.OperationDefinition {
 	for _, op := range ops {
-		if op.Operation == name {
+		if op.Name.Name == name {
 			return op
 		}
 	}

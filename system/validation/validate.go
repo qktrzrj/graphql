@@ -978,7 +978,7 @@ func typeCanBeUsedAs(t, as system.Type) bool {
 		}
 	}
 
-	if t == as {
+	if t.String() == as.String() {
 		return true
 	}
 

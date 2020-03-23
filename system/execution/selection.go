@@ -6,7 +6,6 @@ import (
 	"github.com/unrotten/graphql/system/ast"
 	"github.com/unrotten/graphql/system/utils"
 	"reflect"
-	"strings"
 )
 
 func ApplySelectionSet(document *system.Document, operationName string, vars map[string]interface{}) (*system.SelectionSet, *errors.GraphQLError) {
@@ -28,7 +27,7 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 			break
 		}
 	} else {
-		op = utils.GetOperation(document.Operations, ast.OperationType(strings.ToUpper(operationName)))
+		op = utils.GetOperation(document.Operations, operationName)
 		if op == nil {
 			return nil, errors.New("no operation with name %q", operationName)
 		}

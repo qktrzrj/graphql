@@ -53,7 +53,7 @@ func GetField(typ reflect.Value, name string) *reflect.Value {
 				return &field
 			}
 		}
-		split := strings.Split(tag, ",")
+		split := strings.Split(tag, ";")
 		if split[0] == name {
 			return &field
 		}
@@ -78,7 +78,7 @@ func Convert(args map[string]interface{}, typ reflect.Type) (interface{}, error)
 			fields.nameIndex[field.Name] = len(fields.list) - 1
 			continue
 		}
-		split := strings.Split(tag, ",")
+		split := strings.Split(tag, ";")
 		fields.nameIndex[split[0]] = len(fields.list) - 1
 	}
 

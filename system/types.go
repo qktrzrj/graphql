@@ -87,7 +87,7 @@ type Union struct {
 type Enum struct {
 	Name       string                 `json:"name"`
 	Values     []string               `json:"values"`
-	ValuesDesc []string               `json:"-"`
+	ValuesDesc map[string]string      `json:"-"`
 	ReverseMap map[string]interface{} `json:"-"`
 	Map        map[interface{}]string `json:"-"`
 	Desc       string                 `json:"description"`

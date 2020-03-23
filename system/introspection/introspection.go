@@ -3,7 +3,6 @@ package introspection
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
 	"github.com/unrotten/graphql/system"
@@ -308,11 +307,11 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 
 		switch t := t.OfType.(type) {
 		case *system.Enum:
-			enumValues := make([]__EnumValue, len(t.Map))
-			for k, v := range t.Map {
-				val := fmt.Sprintf("%v", k)
+			enumValues := make([]__EnumValue, 0)
+			for _, v := range t.Map {
+				desc := t.ValuesDesc[v]
 				enumValues = append(enumValues,
-					__EnumValue{Name: v, Desc: &val, IsDeprecated: false, DeprecationReason: ""})
+					__EnumValue{Name: v, Desc: &desc, IsDeprecated: false, DeprecationReason: ""})
 			}
 			sort.Slice(enumValues, func(i, j int) bool { return enumValues[i].Name < enumValues[j].Name })
 			return enumValues
