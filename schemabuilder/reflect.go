@@ -13,6 +13,27 @@ type structFields struct {
 	nameIndex map[string]int
 }
 
+func parseFieldTag(field reflect.StructField) (exist, skip, nonnull bool, name, desc string) {
+	tag := field.Tag.Get("graphql")
+	if tag == "" {
+		exist = false
+		return
+	}
+	if tag == "-" {
+		skip = true
+		return
+	}
+	split := strings.Split(tag, ";")
+	name = split[0]
+	if len(split) > 1 {
+		desc = split[1]
+	}
+	if len(split) > 2 {
+		nonnull = split[2] == "nonnull"
+	}
+	return
+}
+
 func getField(source interface{}, name string) reflect.Type {
 	typ := reflect.TypeOf(source)
 	if field, ok := typ.FieldByName(name); ok {
@@ -24,7 +45,7 @@ func getField(source interface{}, name string) reflect.Type {
 		if tag == "" || tag == "-" {
 			continue
 		}
-		split := strings.Split(tag, ",")
+		split := strings.Split(tag, ";")
 		if split[0] == name {
 			return field.Type
 		}

@@ -556,19 +556,12 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (func(args interface{}) 
 		if !ast.IsExported(name) {
 			return nil, nil, fmt.Errorf("arg field name must can exproted, but %s not", name)
 		}
-		var desc string
-		var nonnull bool
-		if tag := field.Tag.Get("graphql"); tag == "-" {
+		exist, skip, nonnull, tagName, desc := parseFieldTag(field)
+		if skip {
 			continue
-		} else if tag != "" {
-			split := strings.Split(tag, ";")
-			name = split[0]
-			if len(split) > 1 {
-				desc = split[1]
-			}
-			if len(split) > 2 {
-				nonnull = split[2] == "nonnull"
-			}
+		}
+		if exist {
+			name = tagName
 		}
 		fieldTyp, err := sb.getType(field.Type)
 		if err != nil {
