@@ -259,7 +259,7 @@ func validateSelection(c *opContext, sel ast.Selection, t system.NamedType) {
 		case "__type":
 			f = &system.Field{
 				Name: "__type",
-				Args: map[string]*system.Argument{
+				Args: map[string]*system.InputField{
 					"name": {
 						Name: "name",
 						Type: &system.NonNull{Type: c.schema.TypeMap["String"]},
@@ -914,7 +914,7 @@ func validateArgumentLiterals(c *opContext, args []*ast.Argument) {
 	}
 }
 
-func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*system.Argument, loc errors.Location, owner1, owner2 func() string) {
+func validateArgumentTypes(c *opContext, args []*ast.Argument, argDecls []*system.InputField, loc errors.Location, owner1, owner2 func() string) {
 	for _, selArg := range args {
 		arg := utils.GetArgumentType(argDecls, selArg.Name.Name)
 		if arg == nil {

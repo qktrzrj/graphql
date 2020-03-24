@@ -83,7 +83,7 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 		if val.Kind() != typ.Kind() {
 			if val == DescFieldTyp {
 				value := reflect.ValueOf(valInterface)
-				desc = value.FieldByName("desc").String()
+				desc = value.FieldByName("Desc").String()
 				valInterface = value.FieldByName("Field").Interface()
 				if reflect.TypeOf(valInterface).Kind() != typ.Kind() {
 					panic("enum descField's field types are not equal")
@@ -135,7 +135,7 @@ func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
 		Name:         name,
 		Desc:         desc,
 		Type:         typ,
-		FieldResolve: map[string]*FieldResolve{},
+		FieldResolve: map[string]*fieldResolve{},
 		ArgDefault:   map[string]map[string]interface{}{},
 		Interface:    []*Interface{},
 	}
@@ -379,14 +379,14 @@ func (s *Schema) Subscription() *Object {
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
 func (s *Schema) Build() (*system.Schema, error) {
 	sb := &schemaBuilder{
-		types:           make(map[reflect.Type]system.Type),
-		objects:         make(map[reflect.Type]*Object, len(s.objects)),
-		enums:           make(map[reflect.Type]*Enum, len(s.enums)),
-		inputObjects:    make(map[reflect.Type]*InputObject, len(s.inputObjects)),
-		interfaces:      make(map[reflect.Type]*Interface, len(s.interfaces)),
-		scalars:         make(map[reflect.Type]*Scalar, len(s.scalars)),
-		unions:          make(map[reflect.Type]*Union, len(s.unions)),
-		inputObjResolve: make(map[string]func(interface{}) (interface{}, error)),
+		types:        make(map[reflect.Type]system.Type),
+		cacheTypes:   make(map[reflect.Type]resolveFunc),
+		objects:      make(map[reflect.Type]*Object, len(s.objects)),
+		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
+		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
+		interfaces:   make(map[reflect.Type]*Interface, len(s.interfaces)),
+		scalars:      make(map[reflect.Type]*Scalar, len(s.scalars)),
+		unions:       make(map[reflect.Type]*Union, len(s.unions)),
 	}
 
 	directives := make(map[string]*system.Directive, len(s.directives))
@@ -486,9 +486,9 @@ func (s *Schema) Build() (*system.Schema, error) {
 		}
 	}
 	for name, dir := range s.directives {
-		var args []*system.Argument
+		var args []*system.InputField
 		if dir.Type != nil {
-			if _, a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
+			if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
 				for _, arg := range a {
 					if f, ok := dir.Fields[arg.Name]; ok {
 						arg.DefaultValue = f.DefaultValue

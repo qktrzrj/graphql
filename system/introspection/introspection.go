@@ -3,6 +3,7 @@ package introspection
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/unrotten/graphql/errors"
 	"github.com/unrotten/graphql/schemabuilder"
 	"github.com/unrotten/graphql/system"
@@ -224,10 +225,15 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 			for name, field := range t.Fields {
 				args := make([]__InputValue, 0)
 				for name, arg := range field.Args {
+					var defaultValue string
+					if arg.DefaultValue != nil {
+						defaultValue = fmt.Sprintf("%v", arg.DefaultValue)
+					}
 					args = append(args, __InputValue{
-						Name: name,
-						Desc: arg.Desc,
-						Type: __Type{OfType: arg.Type},
+						Name:         name,
+						Desc:         arg.Desc,
+						DefaultValue: &defaultValue,
+						Type:         __Type{OfType: arg.Type},
 					})
 				}
 				sort.Slice(args, func(i, j int) bool { return args[i].Name < args[j].Name })
@@ -325,9 +331,15 @@ func (s *introspection) registerType(schema *schemabuilder.Schema) {
 		switch t := t.OfType.(type) {
 		case *system.InputObject:
 			for name, f := range t.Fields {
+				var defaultValue string
+				if f.DefaultValue != nil {
+					defaultValue = fmt.Sprintf("%v", f.DefaultValue)
+				}
 				fields = append(fields, __InputValue{
-					Name: name,
-					Type: __Type{OfType: f.Type},
+					Name:         name,
+					Type:         __Type{OfType: f.Type},
+					DefaultValue: &defaultValue,
+					Desc:         f.Desc,
 				})
 			}
 		}

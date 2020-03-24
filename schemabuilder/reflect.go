@@ -16,9 +16,9 @@ type structFields struct {
 func parseFieldTag(field reflect.StructField) (exist, skip, nonnull bool, name, desc string) {
 	tag := field.Tag.Get("graphql")
 	if tag == "" {
-		exist = false
 		return
 	}
+	exist = true
 	if tag == "-" {
 		skip = true
 		return

@@ -156,24 +156,18 @@ type FieldResolve func(ctx context.Context, source, args interface{}) (interface
 type HandlerFunc func(ctx context.Context) error
 
 type Field struct {
-	Name          string               `json:"name"`
-	Type          Type                 `json:"type"`
-	Args          map[string]*Argument `json:"arguments"`
-	Resolve       FieldResolve         `json:"-"`
-	HandlersChain []HandlerFunc        `json:"-"`
-	Desc          string               `json:"desc"`
-}
-
-type Argument struct {
-	Name         string      `json:"name"`
-	Type         Type        `json:"type"`
-	DefaultValue interface{} `json:"defaultValue"`
-	Desc         string      `json:"description"`
+	Name          string                 `json:"name"`
+	Type          Type                   `json:"type"`
+	Args          map[string]*InputField `json:"arguments"`
+	Resolve       FieldResolve           `json:"-"`
+	HandlersChain []HandlerFunc          `json:"-"`
+	Desc          string                 `json:"desc"`
 }
 
 type InputField struct {
 	Name         string      `json:"name"`
 	Type         Type        `json:"type"`
+	Desc         string      `json:"description"`
 	DefaultValue interface{} `json:"defaultValue"`
 }
 
@@ -189,7 +183,7 @@ type Schema struct {
 type Directive struct {
 	Name    string                 `json:"name"`
 	Desc    string                 `json:"description"`
-	Args    []*Argument            `json:"arguments"`
+	Args    []*InputField          `json:"arguments"`
 	ArgVals map[string]interface{} `json:"-"`
 	Locs    []string               `json:"locations"`
 	Loc     errors.Location

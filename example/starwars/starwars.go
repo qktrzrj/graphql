@@ -85,34 +85,34 @@ func (d *Droid) GetAppearIn() []*Episode {
 var (
 	luke = &Human{
 		ID:         "1000",
-		Name:       func() *string { name := "Luke Skywalker"; return &name }(),
+		Name:       schemabuilder.StrPtr("Luke Skywalker"),
 		Friends:    []string{"1002", "1003", "2000", "2001"},
 		AppearIn:   func() []*Episode { a, b, c := NEW_HOPE, EMPIRE, JEDI; return []*Episode{&a, &b, &c} }(),
-		HomePlanet: func() *string { homePlanet := "Tatooine"; return &homePlanet }(),
+		HomePlanet: schemabuilder.StrPtr("Tatooine"),
 	}
 	vader = &Human{
 		ID:         "1001",
-		Name:       func() *string { name := "Darth Vader"; return &name }(),
+		Name:       schemabuilder.StrPtr("Darth Vader"),
 		Friends:    []string{"1004"},
 		AppearIn:   func() []*Episode { a, b, c := NEW_HOPE, EMPIRE, JEDI; return []*Episode{&a, &b, &c} }(),
-		HomePlanet: func() *string { homePlanet := "Tatooine"; return &homePlanet }(),
+		HomePlanet: schemabuilder.StrPtr("Tatooine"),
 	}
 	han = &Human{
 		ID:       "1002",
-		Name:     func() *string { name := "Han Solo"; return &name }(),
+		Name:     schemabuilder.StrPtr("Han Solo"),
 		Friends:  []string{"1000", "1003", "2001"},
 		AppearIn: func() []*Episode { a, b, c := NEW_HOPE, EMPIRE, JEDI; return []*Episode{&a, &b, &c} }(),
 	}
 	leia = &Human{
 		ID:         "1003",
-		Name:       func() *string { name := "Leia Organa"; return &name }(),
+		Name:       schemabuilder.StrPtr("Leia Organa"),
 		Friends:    []string{"1000", "1002", "2000", "2001"},
 		AppearIn:   func() []*Episode { a, b, c := NEW_HOPE, EMPIRE, JEDI; return []*Episode{&a, &b, &c} }(),
-		HomePlanet: func() *string { homePlanet := "Alderaan"; return &homePlanet }(),
+		HomePlanet: schemabuilder.StrPtr("Alderaan"),
 	}
 	tarkin = &Human{
 		ID:       "1004",
-		Name:     func() *string { name := "Wilhuff Tarkin"; return &name }(),
+		Name:     schemabuilder.StrPtr("Wilhuff Tarkin"),
 		Friends:  []string{"1001"},
 		AppearIn: func() []*Episode { a := NEW_HOPE; return []*Episode{&a} }(),
 	}
@@ -125,17 +125,17 @@ var (
 	}
 	threepio = &Droid{
 		ID:              "2000",
-		Name:            func() *string { name := "C-3PO"; return &name }(),
+		Name:            schemabuilder.StrPtr("C-3PO"),
 		Friends:         []string{"1000", "1002", "1003", "2001"},
 		AppearIn:        func() []*Episode { a, b, c := NEW_HOPE, EMPIRE, JEDI; return []*Episode{&a, &b, &c} }(),
-		PrimaryFunction: func() *string { name := "Protocol"; return &name }(),
+		PrimaryFunction: schemabuilder.StrPtr("Protocol"),
 	}
 	artoo = &Droid{
 		ID:              "2001",
-		Name:            func() *string { name := "R2-D2"; return &name }(),
+		Name:            schemabuilder.StrPtr("R2-D2"),
 		Friends:         []string{"1000", "1002", "1003"},
 		AppearIn:        func() []*Episode { a, b, c := NEW_HOPE, EMPIRE, JEDI; return []*Episode{&a, &b, &c} }(),
-		PrimaryFunction: func() *string { name := "Astromech"; return &name }(),
+		PrimaryFunction: schemabuilder.StrPtr("Astromech"),
 	}
 	droidData = map[string]*Droid{
 		"2000": threepio,
@@ -228,10 +228,11 @@ func main() {
 		return getHuman(args.Id)
 	}, "")
 	query.FieldFunc("droid", func(args struct {
-		Id string `graphql:"id;id of the droid"`
+		Id *string `graphql:"id;id of the droid"`
 	}) *Droid {
-		return getDroid(args.Id)
-	}, "")
+		return getDroid(*args.Id)
+	}, "", schemabuilder.NonNullField)
+	query.FieldArgsDefault("droid", "id", "2000")
 
 	schema := builder.MustBuild()
 	introspection.AddIntrospectionToSchema(schema)

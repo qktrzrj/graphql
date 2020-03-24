@@ -422,14 +422,10 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 				mutex.Unlock()
 				return nil
 			}
-			field, ok := typ.Fields[selection.Name]
-			if !ok || field.Resolve == nil {
-				field, ok = graphqlTyp.Fields[selection.Name]
-				if !ok {
-					return nil
-				}
+			field, ok := graphqlTyp.Fields[selection.Name]
+			if !ok {
+				return nil
 			}
-
 			resolved, err := e.resolveAndExecute(ctx, field, source, selection)
 			if err != nil {
 				ctx.addErr(selection.Loc, err)

@@ -52,6 +52,16 @@ func StrPtr(i string) *string {
 	return &i
 }
 
+// StrSlicePtr transforms a []string into a []*string
+func StrSlicePtr(i ...string) []*string {
+	var is []*string
+	for _, ii := range i {
+		ic := ii
+		is = append(is, &ic)
+	}
+	return is
+}
+
 // UInt8Ptr transforms a uint8 into a *uint8
 func UInt8Ptr(i uint8) *uint8 {
 	return &i

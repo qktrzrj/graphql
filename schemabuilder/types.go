@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/unrotten/graphql/system"
 	"github.com/unrotten/graphql/system/ast"
 	"math"
 	"reflect"
@@ -18,7 +19,7 @@ type Object struct {
 	Name         string
 	Desc         string
 	Type         interface{}
-	FieldResolve map[string]*FieldResolve
+	FieldResolve map[string]*fieldResolve
 	ArgDefault   map[string]map[string]interface{}
 	Interface    []*Interface
 }
@@ -31,14 +32,45 @@ type InputObject struct {
 	Fields map[string]*inputFieldResolve
 }
 
-type HandleFunc func(ctx context.Context) error
+type FieldFuncOption interface {
+	execute(interface{}) error
+}
 
-// FieldFuncOption is an func for the variadic options that can be passed
-// to a FieldDefault for configuring options on that function.
-type FieldFuncOption func(*FieldResolve) HandleFunc
+type AfterBuildFunc func(*system.Field) error
 
-var NonNullField FieldFuncOption = func(resolve *FieldResolve) HandleFunc {
-	resolve.MarkedNonNullable = true
+func (a AfterBuildFunc) execute(arg interface{}) error {
+	if field, ok := arg.(*system.Field); ok {
+		return a(field)
+	}
+	return fmt.Errorf("afterBuildFunc receive unexpcted arg %v, must be *system.Field", arg)
+}
+
+type ExecuteFuncParam struct {
+	Ctx    context.Context
+	Args   interface{} // when use in afterExecuteFunc, args is null
+	Source interface{}
+}
+
+type BeforeExecuteFunc func(ctx context.Context, arg, source interface{}) error
+
+func (b BeforeExecuteFunc) execute(arg interface{}) error {
+	if arg, ok := arg.(ExecuteFuncParam); ok {
+		return b(arg.Ctx, arg.Args, arg.Source)
+	}
+	return fmt.Errorf("beforeExecuteFunc receive ExecuteFuncParam but got %v", arg)
+}
+
+type AfterExecuteFunc func(ctx context.Context, resource interface{}) error
+
+func (a AfterExecuteFunc) execute(arg interface{}) error {
+	if arg, ok := arg.(ExecuteFuncParam); ok {
+		return a(arg.Ctx, arg.Source)
+	}
+	return fmt.Errorf("afterExecuteFunc receive ExecuteFuncParam but got %v", arg)
+}
+
+var NonNullField AfterBuildFunc = func(field *system.Field) error {
+	field.Type = &system.NonNull{Type: field.Type}
 	return nil
 }
 
@@ -59,7 +91,7 @@ type Interface struct {
 	Type          interface{}
 	Fn            interface{}
 	PossibleTypes map[string]*Object
-	FieldResolve  map[string]*FieldResolve
+	FieldResolve  map[string]*fieldResolve
 	Interface     []*Interface
 }
 
@@ -109,19 +141,22 @@ type Directive struct {
 //    })
 func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOption ...FieldFuncOption) {
 	if s.FieldResolve == nil {
-		s.FieldResolve = make(map[string]*FieldResolve)
+		s.FieldResolve = make(map[string]*fieldResolve)
 	}
 
 	if _, ok := s.FieldResolve[name]; ok {
 		panic("duplicate method")
 	}
 
-	resolve := &FieldResolve{fn: fn, desc: desc}
+	resolve := &fieldResolve{fn: fn, desc: desc}
 	for _, opt := range fieldFuncOption {
-
-		handleFunc := opt(resolve)
-		if handleFunc != nil {
-			resolve.handleChain = append(resolve.handleChain, handleFunc)
+		switch opt := opt.(type) {
+		case AfterBuildFunc:
+			resolve.buildChain = append(resolve.buildChain, opt)
+		case BeforeExecuteFunc:
+			resolve.handleChain = append(resolve.executeChain, opt)
+		default:
+			resolve.executeChain = append(resolve.handleChain, opt)
 		}
 	}
 
@@ -178,9 +213,9 @@ func (s *Object) InterfaceList(list ...*Interface) {
 }
 
 // similar as object's func, but haven't middleware func , and given name must be same as interface's method
-func (s *Interface) FieldFunc(name string, fn interface{}, descs ...string) {
+func (s *Interface) FieldFunc(name string, fn string, descs ...string) {
 	if s.FieldResolve == nil {
-		s.FieldResolve = make(map[string]*FieldResolve)
+		s.FieldResolve = make(map[string]*fieldResolve)
 	}
 
 	if _, ok := s.FieldResolve[name]; ok {
@@ -190,7 +225,7 @@ func (s *Interface) FieldFunc(name string, fn interface{}, descs ...string) {
 	if len(descs) > 0 {
 		desc = descs[0]
 	}
-	resolve := &FieldResolve{fn: fn, desc: desc}
+	resolve := &fieldResolve{fn: fn, desc: desc}
 	s.FieldResolve[name] = resolve
 }
 
@@ -213,11 +248,12 @@ func (s *Scalar) LiteralFunc(fn func(value ast.Value) error) {
 	s.ParseLiteral = fn
 }
 
-type FieldResolve struct {
-	MarkedNonNullable bool
-	fn                interface{}
-	desc              string
-	handleChain       []HandleFunc
+type fieldResolve struct {
+	fn           interface{}
+	desc         string
+	buildChain   []FieldFuncOption
+	handleChain  []FieldFuncOption
+	executeChain []FieldFuncOption
 }
 
 type inputFieldResolve struct {

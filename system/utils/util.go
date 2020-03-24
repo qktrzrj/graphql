@@ -44,7 +44,7 @@ func GetOperation(ops []*ast.OperationDefinition, name string) *ast.OperationDef
 	return nil
 }
 
-func GetArgumentType(args []*system.Argument, name string) *system.Argument {
+func GetArgumentType(args []*system.InputField, name string) *system.InputField {
 	for _, a := range args {
 		if a.Name == name {
 			return a
@@ -62,8 +62,8 @@ func GetArgumentNode(args []*ast.Argument, name string) *ast.Argument {
 	return nil
 }
 
-func GetArgumentTypes(args map[string]*system.Argument) []*system.Argument {
-	var res []*system.Argument
+func GetArgumentTypes(args map[string]*system.InputField) []*system.InputField {
+	var res []*system.InputField
 	for _, arg := range args {
 		res = append(res, arg)
 	}
