@@ -247,24 +247,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		for name, resolve := range obj.FieldResolve {
 			if f, err := sb.getField(resolve, typ); err == nil && f != nil {
 				f.Name = name
-				if args, ok := obj.ArgDefault[name]; ok {
-					for argName, defaultValue := range args {
-						f.Args[argName].DefaultValue = defaultValue
-					}
-				}
 				object.Fields[name] = f
-				var before BeforeExecuteFunc = func(ctx context.Context, arg, source interface{}) error {
-					if _, ok := arg.(map[string]interface{}); !ok || arg == nil {
-						arg = make(map[string]interface{})
-					}
-					for n, i := range f.Args {
-						if v, ok := arg.(map[string]interface{})[n]; !ok || v == nil {
-							arg.(map[string]interface{})[n] = i.DefaultValue
-						}
-					}
-					return nil
-				}
-				resolve.handleChain = append(resolve.handleChain, before)
 			} else if err != nil {
 				return fmt.Errorf("object %s field %s parse error:%w", typ.String(), name, err)
 			}

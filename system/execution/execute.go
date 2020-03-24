@@ -8,11 +8,9 @@ import (
 	"github.com/unrotten/graphql/system"
 	"github.com/unrotten/graphql/system/ast"
 	"github.com/unrotten/graphql/system/validation"
-	"golang.org/x/sync/errgroup"
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 )
 
 type Executor struct {
@@ -29,7 +27,6 @@ type exeContext struct {
 	context.Context
 	errs errors.MultiError
 	path []interface{}
-	sync.Mutex
 }
 
 func (e *exeContext) addErr(location errors.Location, err error) {
@@ -42,8 +39,6 @@ func (e *exeContext) addErr(location errors.Location, err error) {
 }
 
 func (e *exeContext) updatePath(add bool, path ...interface{}) {
-	e.Lock()
-	defer e.Unlock()
 	if add {
 		e.path = append(e.path, path...)
 	} else if len(e.path) > 0 {
@@ -58,8 +53,6 @@ type Params struct {
 	Variables     map[string]interface{} `json:"variables"`
 	Context       context.Context        `json:"context"`
 }
-
-var ErrNoUpdate = errors.New("no update")
 
 func Do(schema *system.Schema, param Params, valid ...bool) (interface{}, error) {
 
@@ -165,7 +158,6 @@ func (e *Executor) executeUnion(ctx *exeContext, typ *system.Union, source inter
 	}
 
 	fields := make(map[string]interface{})
-	mutex := new(sync.RWMutex)
 
 	var possibleTypes []string
 	for typString, graphqlTyp := range typ.Types {
@@ -178,64 +170,53 @@ func (e *Executor) executeUnion(ctx *exeContext, typ *system.Union, source inter
 			continue
 		}
 		possibleTypes = append(possibleTypes, graphqlTyp.String())
-		group := new(errgroup.Group)
-		for _, s := range selectionSet.Selections {
-			selection := s
-			group.Go(func() error {
+		for _, selection := range selectionSet.Selections {
+			func() {
 				ctx.updatePath(true, selection.Name)
 				defer func() {
 					ctx.updatePath(false)
 				}()
 				if selection.Name == "__typename" {
-					mutex.Lock()
 					fields[selection.Alias] = graphqlTyp.Name
-					mutex.Unlock()
-					return nil
+					return
 				}
 				field := graphqlTyp.Fields[selection.Name]
 				if field != nil {
 					resolved, err := e.resolveAndExecute(ctx, field, inner.Interface(), selection)
 					if err != nil {
 						ctx.addErr(selection.Loc, err)
-						mutex.Lock()
 						fields[selection.Alias] = nil
-						mutex.Unlock()
-						return nil
+						return
 					}
-					mutex.Lock()
 					fields[selection.Alias] = resolved
-					mutex.Unlock()
 				}
-				return nil
-			})
+			}()
 		}
 
-		for _, f := range selectionSet.Fragments {
-			fragment := f
-			group.Go(func() error {
+		for _, fragment := range selectionSet.Fragments {
+			func() {
 				ctx.updatePath(true, fragment.Fragment.Name)
 				defer func() {
 					ctx.updatePath(false)
 				}()
 				if fragment.Fragment.On != typString && fragment.Fragment.On != typ.Name {
 					if _, ok := graphqlTyp.Interfaces[fragment.Fragment.On]; !ok {
-						return nil
+						return
 					}
 				}
 				resolved, err := e.executeObject(ctx, graphqlTyp, inner.Interface(), fragment.Fragment.SelectionSet)
 				if err != nil {
 					ctx.addErr(fragment.Loc, err)
-					return nil
+					return
 				}
 
 				for k, v := range resolved.(map[string]interface{}) {
 					fields[k] = v
 				}
-				return nil
-			})
+				return
+			}()
 
 		}
-		group.Wait()
 	}
 
 	if len(possibleTypes) > 1 {
@@ -257,28 +238,23 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 	}
 
 	fields := make(map[string]interface{})
-	mutex := new(sync.RWMutex)
 
-	group := new(errgroup.Group)
 	// for every selection, resolve the value and store it in the output object
-	for _, s := range selections {
-		selection := s
-		group.Go(func() error {
+	for _, selection := range selections {
+		func() {
 			ctx.updatePath(true, selection.Alias)
 			defer func() {
 				ctx.updatePath(false)
 			}()
 			if ok, err := shouldIncludeNode(selection.Directives); err != nil {
 				ctx.addErr(selectionSet.Loc, err)
-				return nil
+				return
 			} else if !ok {
-				return nil
+				return
 			}
 			if selection.Name == "__typename" {
-				mutex.Lock()
 				fields[selection.Alias] = typ.Name
-				mutex.Unlock()
-				return nil
+				return
 			}
 
 			field := typ.Fields[selection.Name]
@@ -286,18 +262,13 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 			resolved, err := e.resolveAndExecute(ctx, field, source, selection)
 			if err != nil {
 				ctx.addErr(selection.Loc, err)
-				mutex.Lock()
 				fields[selection.Alias] = nil
-				mutex.Unlock()
-				return nil
+				return
 			}
-			mutex.Lock()
 			fields[selection.Alias] = resolved
-			mutex.Unlock()
-			return nil
-		})
+			return
+		}()
 	}
-	_ = group.Wait()
 	return fields, nil
 }
 
@@ -344,9 +315,6 @@ func (e *Executor) executeList(ctx *exeContext, typ *system.List, source interfa
 		value := slice.Index(i)
 		resolved, err := e.execute(ctx, typ.Type, value.Interface(), selectionSet)
 		if err != nil {
-			if err == ErrNoUpdate {
-				return nil, err
-			}
 			return nil, err
 		}
 		items[i] = resolved
@@ -406,41 +374,31 @@ func (e *Executor) executeInterface(ctx *exeContext, typ *system.Interface, sour
 		return nil, err
 	}
 	fields := make(map[string]interface{})
-	mutex := new(sync.RWMutex)
 	// for every selection, resolve the value and store it in the output object
-	group := new(errgroup.Group)
-	for _, s := range selections {
-		selection := s
-		group.Go(func() error {
+	for _, selection := range selections {
+		func() {
 			ctx.updatePath(true, selection.Name)
 			defer func() {
 				ctx.updatePath(false)
 			}()
 			if selection.Name == "__typename" {
-				mutex.Lock()
 				fields[selection.Alias] = graphqlTyp.Name
-				mutex.Unlock()
-				return nil
+				return
 			}
 			field, ok := graphqlTyp.Fields[selection.Name]
 			if !ok {
-				return nil
+				return
 			}
 			resolved, err := e.resolveAndExecute(ctx, field, source, selection)
 			if err != nil {
 				ctx.addErr(selection.Loc, err)
-				mutex.Lock()
 				fields[selection.Alias] = nil
-				mutex.Unlock()
-				return nil
+				return
 			}
-			mutex.Lock()
 			fields[selection.Alias] = resolved
-			mutex.Unlock()
-			return nil
-		})
+			return
+		}()
 	}
-	group.Wait()
 
 	return fields, nil
 }

@@ -20,7 +20,6 @@ type Object struct {
 	Desc         string
 	Type         interface{}
 	FieldResolve map[string]*fieldResolve
-	ArgDefault   map[string]map[string]interface{}
 	Interface    []*Interface
 }
 
@@ -164,16 +163,6 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 		panic("duplicate method")
 	}
 	s.FieldResolve[name] = resolve
-}
-
-func (s *Object) FieldArgsDefault(field, argName string, defaultValue interface{}) {
-	if s.ArgDefault[field] == nil {
-		s.ArgDefault[field] = make(map[string]interface{})
-	}
-	if _, ok := s.ArgDefault[field][argName]; ok {
-		panic("duplicate arg default " + argName)
-	}
-	s.ArgDefault[field][argName] = defaultValue
 }
 
 // FieldDefault is used to expose the fields of an input object
