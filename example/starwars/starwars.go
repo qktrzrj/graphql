@@ -220,6 +220,8 @@ func main() {
 	droidType.FieldFunc("secretBackstory", func() (*string, error) { return nil, errors.New("secretBackstory is secret.") }, "Construction date and the name of the designer.")
 	droidType.InterfaceList(characterInterface)
 
+	builder.InputObject("arg", Arg{}).FieldDefault("id", "2000")
+
 	query := builder.Query()
 	query.FieldFunc("hero", getHero, "")
 	query.FieldFunc("human", func(args struct {
@@ -232,7 +234,6 @@ func main() {
 	}) *Droid {
 		return getDroid(*args.Id)
 	}, "", schemabuilder.NonNullField)
-	query.FieldArgsDefault("droid", "id", "2000")
 
 	schema := builder.MustBuild()
 	introspection.AddIntrospectionToSchema(schema)

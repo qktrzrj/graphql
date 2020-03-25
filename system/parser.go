@@ -34,7 +34,7 @@ func Parse(source string) (*Document, *errors.GraphQLError) {
 
 func ParseDocument(source string) (*ast.Document, *errors.GraphQLError) {
 	if source == "" {
-		return nil, errors.New("Must provide Source. Received: undefined.")
+		return nil, errors.New("Must provide source. Received: undefined.")
 	}
 	l := NewLexer(source, false)
 

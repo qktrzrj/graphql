@@ -16,7 +16,7 @@ var NilGraphQLError *errors.GraphQLError
 func TestParser(t *testing.T) {
 	t.Run("asserts that a source to parse was provided", func(t *testing.T) {
 		_, err := system.ParseDocument("")
-		assert.EqualError(t, err, "graphql: Must provide Source. Received: undefined.")
+		assert.EqualError(t, err, "graphql: Must provide source. Received: undefined.")
 	})
 
 	t.Run("parse provides useful errors", func(t *testing.T) {

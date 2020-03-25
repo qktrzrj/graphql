@@ -396,10 +396,10 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 		Args: args,
 		Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
 			for _, handler := range fnresolve.handleChain {
-				if err := handler.execute(ExecuteFuncParam{
-					Ctx:    ctx,
-					Args:   args,
-					Source: source,
+				if err := handler.execute(executeFuncParam{
+					ctx:    ctx,
+					args:   args,
+					source: source,
 				}); err != nil {
 					return nil, err
 				}
@@ -417,9 +417,9 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 				return nil, err
 			}
 			for _, execute := range fnresolve.executeChain {
-				if err := execute.execute(ExecuteFuncParam{
-					Ctx:    ctx,
-					Source: &result,
+				if err := execute.execute(executeFuncParam{
+					ctx:    ctx,
+					source: &result,
 				}); err != nil {
 					return nil, err
 				}

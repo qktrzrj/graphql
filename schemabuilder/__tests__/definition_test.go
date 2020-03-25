@@ -137,7 +137,7 @@ func TestObject(t *testing.T) {
 		Init()
 		object := builder.Object("SomeObject", Object{}, "")
 		Inter := builder.Interface("Interface", new(Interface), nil, "")
-		Inter.FieldFunc("Fields", func() {}, "")
+		Inter.FieldFunc("Fields", "Fields", "")
 		object.InterfaceList(Inter)
 		builder.Query().FieldFunc("SomeObject", func() Object { return Object{} }, "")
 		schema, err := builder.Build()

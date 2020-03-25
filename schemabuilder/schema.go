@@ -136,7 +136,6 @@ func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
 		Desc:         desc,
 		Type:         typ,
 		FieldResolve: map[string]*fieldResolve{},
-		ArgDefault:   map[string]map[string]interface{}{},
 		Interface:    []*Interface{},
 	}
 	s.objects[name] = object
@@ -145,7 +144,7 @@ func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
 
 // InputObject registers a struct as inout object which can be passed as an argument to a Query or Mutation
 // We'll read through the fields of the struct and create argument parsers to fill the data from graphQL JSON input
-func (s *Schema) InputObject(name string, typ interface{}, desc string) *InputObject {
+func (s *Schema) InputObject(name string, typ interface{}, desc ...string) *InputObject {
 	if inputObject, ok := s.inputObjects[name]; ok {
 		if reflect.TypeOf(inputObject.Type) != reflect.TypeOf(typ) {
 			var t = reflect.TypeOf(inputObject.Type)
@@ -153,10 +152,14 @@ func (s *Schema) InputObject(name string, typ interface{}, desc string) *InputOb
 				" %s.%s", t.PkgPath(), t.Name()))
 		}
 	}
+	var d string
+	if len(desc) > 0 {
+		d = desc[0]
+	}
 	inputObject := &InputObject{
 		Name:   name,
 		Type:   typ,
-		Desc:   desc,
+		Desc:   d,
 		Fields: map[string]*inputFieldResolve{},
 	}
 	s.inputObjects[name] = inputObject

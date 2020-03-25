@@ -35,40 +35,40 @@ type FieldFuncOption interface {
 	execute(interface{}) error
 }
 
-type AfterBuildFunc func(*system.Field) error
+type afterBuildFunc func(*system.Field) error
 
-func (a AfterBuildFunc) execute(arg interface{}) error {
+func (a afterBuildFunc) execute(arg interface{}) error {
 	if field, ok := arg.(*system.Field); ok {
 		return a(field)
 	}
 	return fmt.Errorf("afterBuildFunc receive unexpcted arg %v, must be *system.Field", arg)
 }
 
-type ExecuteFuncParam struct {
-	Ctx    context.Context
-	Args   interface{} // when use in afterExecuteFunc, args is null
-	Source interface{}
+type executeFuncParam struct {
+	ctx    context.Context
+	args   interface{} // when use in afterExecuteFunc, args is null
+	source interface{}
 }
 
-type BeforeExecuteFunc func(ctx context.Context, arg, source interface{}) error
+type ExecuteFunc func(ctx context.Context, arg, source interface{}) error
 
-func (b BeforeExecuteFunc) execute(arg interface{}) error {
-	if arg, ok := arg.(ExecuteFuncParam); ok {
-		return b(arg.Ctx, arg.Args, arg.Source)
+func (b ExecuteFunc) execute(arg interface{}) error {
+	if arg, ok := arg.(executeFuncParam); ok {
+		return b(arg.ctx, arg.args, arg.source)
 	}
-	return fmt.Errorf("beforeExecuteFunc receive ExecuteFuncParam but got %v", arg)
+	return fmt.Errorf("beforeExecuteFunc receive executeFuncParam but got %v", arg)
 }
 
-type AfterExecuteFunc func(ctx context.Context, resource interface{}) error
+type afterExecuteFunc func(ctx context.Context, resource interface{}) error
 
-func (a AfterExecuteFunc) execute(arg interface{}) error {
-	if arg, ok := arg.(ExecuteFuncParam); ok {
-		return a(arg.Ctx, arg.Source)
+func (a afterExecuteFunc) execute(arg interface{}) error {
+	if arg, ok := arg.(executeFuncParam); ok {
+		return a(arg.ctx, arg.source)
 	}
-	return fmt.Errorf("afterExecuteFunc receive ExecuteFuncParam but got %v", arg)
+	return fmt.Errorf("afterExecuteFunc receive executeFuncParam but got %v", arg)
 }
 
-var NonNullField AfterBuildFunc = func(field *system.Field) error {
+var NonNullField afterBuildFunc = func(field *system.Field) error {
 	field.Type = &system.NonNull{Type: field.Type}
 	return nil
 }
@@ -150,9 +150,9 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 	resolve := &fieldResolve{fn: fn, desc: desc}
 	for _, opt := range fieldFuncOption {
 		switch opt := opt.(type) {
-		case AfterBuildFunc:
+		case afterBuildFunc:
 			resolve.buildChain = append(resolve.buildChain, opt)
-		case BeforeExecuteFunc:
+		case ExecuteFunc:
 			resolve.handleChain = append(resolve.executeChain, opt)
 		default:
 			resolve.executeChain = append(resolve.handleChain, opt)

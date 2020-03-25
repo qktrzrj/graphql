@@ -167,31 +167,19 @@ func init() {
 	schema.Subscription()
 
 	being := schema.Interface("Being", new(Being), nil, "")
-	being.FieldFunc("name", func(source Being, args struct {
-		Surname bool `graphql:"surname"`
-	}) string {
-		return source.Name(args.Surname)
-	}, "")
+	being.FieldFunc("name", "Name", "")
 
 	mammal := schema.Interface("Mammal", new(Mammal), nil, "")
-	mammal.FieldFunc("mother", func(source Mammal) Mammal { return source.Mother() }, "")
-	mammal.FieldFunc("father", func(source Mammal) Mammal { return source.Father() }, "")
+	mammal.FieldFunc("mother", "Mother", "")
+	mammal.FieldFunc("father", "Father", "")
 
 	pet := schema.Interface("Pet", new(Pet), nil, "")
-	pet.FieldFunc("name", func(source Pet, args struct {
-		Surname bool `graphql:"surname"`
-	}) string {
-		return source.Name(args.Surname)
-	}, "")
+	pet.FieldFunc("name", "Name", "")
 
 	canine := schema.Interface("Canine", new(Canine), nil, "")
-	canine.FieldFunc("name", func(source Canine, args struct {
-		Surname bool `graphql:"surname"`
-	}) string {
-		return source.Name(args.Surname)
-	}, "")
-	canine.FieldFunc("mother", func(source Canine) Canine { return source.Mother().(Canine) }, "")
-	canine.FieldFunc("father", func(source Canine) Canine { return source.Father().(Canine) }, "")
+	canine.FieldFunc("name", "Name", "")
+	canine.FieldFunc("mother", "Mother", "")
+	canine.FieldFunc("father", "Father", "")
 
 	schema.Enum("DogCommand", DogCommand(0), map[string]interface{}{
 		"SIT":  SIT,
@@ -221,7 +209,6 @@ func init() {
 	}) bool {
 		return !args.AtOtherHomes
 	}, "")
-	dog.FieldArgsDefault("isHouseTrained", "atOtherHomes", true)
 	dog.FieldFunc("isAtLocation", func(args struct {
 		X int `graphql:"x"`
 		Y int `graphql:"y"`
@@ -241,7 +228,7 @@ func init() {
 	schema.Union("CatOrDog", CatDog{}, "")
 
 	intelligent := schema.Interface("Intelligent", new(Intelligent), nil, "")
-	intelligent.FieldFunc("iq", func(source Intelligent) int { return source.Iq() }, "")
+	intelligent.FieldFunc("iq", "Iq", "")
 
 	human := schema.Object("Human", Human{}, "")
 	human.InterfaceList(being, intelligent)
@@ -339,15 +326,13 @@ func init() {
 	}) string {
 		return fmt.Sprintf("%d", args.Type)
 	}, "")
-	complicatedArgs.FieldArgsDefault("nonNullFieldWithDefault", "type", 0)
 	complicatedArgs.FieldFunc("multipleOpts", func(args struct {
 		Opt1 int `graphql:"opt1"`
 		Opt2 int `graphql:"opt2"`
 	}) string {
 		return fmt.Sprintf("%d,%d", args.Opt1, args.Opt2)
 	}, "")
-	complicatedArgs.FieldArgsDefault("multipleOpts", "opt1", 0)
-	complicatedArgs.FieldArgsDefault("multipleOpts", "opt2", 0)
+
 	complicatedArgs.FieldFunc("multipleOptAndReq", func(args struct {
 		Req1 int `graphql:"req1,nonnull"`
 		Req2 int `graphql:"req2,nonnull"`
@@ -356,8 +341,6 @@ func init() {
 	}) string {
 		return fmt.Sprintf("%d,%d", args.Req1, args.Req2)
 	}, "")
-	complicatedArgs.FieldArgsDefault("multipleOptAndReq", "opt1", 0)
-	complicatedArgs.FieldArgsDefault("multipleOptAndReq", "opt2", 0)
 
 	schema.Scalar("Invalid", InvalidScalar{}, "", func(value interface{}, dest reflect.Value) error {
 		return fmt.Errorf(`invalid scalar is always invalid:"%s"`, value)

@@ -148,22 +148,16 @@ func Init2() {
 	build := schemabuilder.NewSchema()
 
 	NamedType := build.Interface("Named", new(Named), nil, "")
-	NamedType.FieldFunc("name", func(source Named) string { return source.GetName() }, "")
+	NamedType.FieldFunc("name", "Name", "")
 
 	LifeType := build.Interface("Life", new(Life), nil, "")
-	LifeType.FieldFunc("progeny", func(source Life) []Life { return source.GetProgeny() }, "")
+	LifeType.FieldFunc("progeny", "Progeny", "")
 
 	MammalType := build.Interface("Mammal", new(Mammal), nil, "")
 	MammalType.InterfaceList(LifeType)
-	MammalType.FieldFunc("progeny", func(source Mammal) []Mammal {
-		var mammal []Mammal
-		for _, l := range source.GetProgeny() {
-			mammal = append(mammal, l.(Mammal))
-		}
-		return mammal
-	}, "")
-	MammalType.FieldFunc("mother", func(source Mammal) Mammal { return source.GetMother() }, "")
-	MammalType.FieldFunc("father", func(source Mammal) Mammal { return source.GetFather() }, "")
+	MammalType.FieldFunc("progeny", "Progeny", "")
+	MammalType.FieldFunc("mother", "Mother", "")
+	MammalType.FieldFunc("father", "Father", "")
 
 	DogType := build.Object("Dog", Dog{}, "")
 	DogType.InterfaceList(MammalType, LifeType, NamedType)
