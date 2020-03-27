@@ -175,12 +175,12 @@ func (sb *schemaBuilder) getInterface(typ reflect.Type) (*system.Interface, erro
 				}
 				fctx := &funcContext{funcType: method.Type}
 				// Parse return values. The first return value must be the actual value, and the second value can optionally be an error.
-				err := fctx.parseReturnSignature(resolve)
+				err := fctx.parseReturnSignature()
 				if err != nil {
 					return nil, err
 				}
 
-				retType, err := fctx.getReturnType(sb, resolve)
+				retType, err := fctx.getReturnType(sb)
 				if err != nil {
 					return nil, err
 				}
@@ -254,49 +254,17 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		}
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
-			name := field.Name
-			exist, skip, nonnull, tagName, desc := parseFieldTag(field)
-			if skip {
-				continue
-			}
-			if exist {
-				name = tagName
-			}
-			if _, ok := obj.FieldResolve[name]; ok {
-				continue
-			}
-
-			fieldTyp, err := sb.getType(field.Type)
+			buildField, err := sb.buildField(field)
 			if err != nil {
 				return err
 			}
-			if _, ok := fieldTyp.(*system.InputObject); ok {
-				return fmt.Errorf("object %s field %s type can not be input object", typ.String(), name)
+			if buildField == nil {
+				continue
 			}
-			if nonnull {
-				fieldTyp = &system.NonNull{Type: fieldTyp}
+			if _, ok := obj.FieldResolve[buildField.Name]; ok {
+				continue
 			}
-			object.Fields[name] = &system.Field{
-				Name: name,
-				Type: fieldTyp,
-				Args: map[string]*system.InputField{},
-				Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
-					if source == nil {
-						return nil, fmt.Errorf("source is nil")
-					}
-					value := reflect.ValueOf(source)
-					if value.Kind() == reflect.Ptr {
-						value = value.Elem()
-					}
-					fieldVal := GetField(value, name)
-					if fieldVal == nil {
-						return nil, fmt.Errorf("can not get field %s", name)
-					}
-					return (*fieldVal).Interface(), nil
-				},
-				Desc: desc,
-			}
-			object.Fields[name].Type = fieldTyp
+			object.Fields[buildField.Name] = buildField
 		}
 		for _, iface := range obj.Interface {
 			ifaceTyp, err := sb.getType(reflect.TypeOf(iface.Type))
@@ -313,6 +281,44 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 		return nil
 	}
 	return nil
+}
+
+func (sb *schemaBuilder) buildField(field reflect.StructField) (*system.Field, error) {
+	skip, nonnull, name, desc := parseFieldTag(field)
+	if skip {
+		return nil, nil
+	}
+
+	fieldTyp, err := sb.getType(field.Type)
+	if err != nil {
+		return nil, err
+	}
+	if _, ok := fieldTyp.(*system.InputObject); ok {
+		return nil, fmt.Errorf("field %s type can not be input object", name)
+	}
+	if nonnull {
+		fieldTyp = &system.NonNull{Type: fieldTyp}
+	}
+	return &system.Field{
+		Name: name,
+		Type: fieldTyp,
+		Args: map[string]*system.InputField{},
+		Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
+			if source == nil {
+				return nil, fmt.Errorf("source is nil")
+			}
+			value := reflect.ValueOf(source)
+			if value.Kind() == reflect.Ptr {
+				value = value.Elem()
+			}
+			fieldVal := GetField(value, name)
+			if fieldVal == nil {
+				return nil, fmt.Errorf("can not get field %s", name)
+			}
+			return (*fieldVal).Interface(), nil
+		},
+		Desc: desc,
+	}, nil
 }
 
 func (sb *schemaBuilder) buildUnion(typ reflect.Type) error {
@@ -360,7 +366,7 @@ func (sb *schemaBuilder) builInputObject(typ reflect.Type) error {
 }
 
 func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*system.Field, error) {
-	fctx := funcContext{typ: src}
+	fctx := &funcContext{typ: src}
 
 	callableFunc, err := fctx.getFuncVal(fnresolve.fn)
 	if err != nil {
@@ -381,12 +387,12 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 	}
 
 	// Parse return values. The first return value must be the actual value, and the second value can optionally be an error.
-	err = fctx.parseReturnSignature(fnresolve)
+	err = fctx.parseReturnSignature()
 	if err != nil {
 		return nil, err
 	}
 
-	retType, err := fctx.getReturnType(sb, fnresolve)
+	retType, err := fctx.getReturnType(sb)
 	if err != nil {
 		return nil, err
 	}
@@ -396,7 +402,7 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 		Args: args,
 		Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
 			for _, handler := range fnresolve.handleChain {
-				if err := handler.execute(executeFuncParam{
+				if _, err := handler.execute(executeFuncParam{
 					ctx:    ctx,
 					args:   args,
 					source: source,
@@ -412,14 +418,17 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 			var funcOutputArgs []reflect.Value
 			funcOutputArgs = callableFunc.Call(funcInputArgs)
 
-			result, err := fctx.extractResultAndErr(funcOutputArgs)
+			var result interface{}
+			result, err = fctx.extractResultAndErr(funcOutputArgs)
 			if err != nil {
 				return nil, err
 			}
 			for _, execute := range fnresolve.executeChain {
-				if err := execute.execute(executeFuncParam{
+				if result, err = execute.execute(executeFuncParam{
+					sb:     sb,
 					ctx:    ctx,
-					source: &result,
+					args:   args,
+					source: result,
 				}); err != nil {
 					return nil, err
 				}
@@ -429,7 +438,7 @@ func (sb *schemaBuilder) getField(fnresolve *fieldResolve, src reflect.Type) (*s
 		Desc: fnresolve.desc,
 	}
 	for _, build := range fnresolve.buildChain {
-		if err := build.execute(field); err != nil {
+		if _, err := build.execute(buildParam{sb: sb, f: field, functx: fctx, fnresolve: fnresolve}); err != nil {
 			return nil, err
 		}
 	}
@@ -567,7 +576,7 @@ func (funcCtx *funcContext) getArgParserAndTyp(sb *schemaBuilder, in []reflect.T
 }
 
 // parseReturnSignature reads and validates the return signature of the function to determine whether it has a return type and/or an error response.
-func (funcCtx *funcContext) parseReturnSignature(r *fieldResolve) (err error) {
+func (funcCtx *funcContext) parseReturnSignature() (err error) {
 	out := make([]reflect.Type, 0, funcCtx.funcType.NumOut())
 	for i := 0; i < funcCtx.funcType.NumOut(); i++ {
 		out = append(out, funcCtx.funcType.Out(i))
@@ -598,7 +607,7 @@ func (funcCtx *funcContext) parseReturnSignature(r *fieldResolve) (err error) {
 
 // getReturnType returns a GraphQL node type for the return type of the function.  So an object "User" that has a linked function which returns a
 // list of "Hats" will resolve the GraphQL type of a "Hat" at this point.
-func (funcCtx *funcContext) getReturnType(sb *schemaBuilder, m *fieldResolve) (system.Type, error) {
+func (funcCtx *funcContext) getReturnType(sb *schemaBuilder) (system.Type, error) {
 	var retType system.Type
 	if funcCtx.returnsFunc {
 		function := funcCtx.funcType.Out(0)

@@ -156,12 +156,11 @@ type FieldResolve func(ctx context.Context, source, args interface{}) (interface
 type HandlerFunc func(ctx context.Context) error
 
 type Field struct {
-	Name          string                 `json:"name"`
-	Type          Type                   `json:"type"`
-	Args          map[string]*InputField `json:"arguments"`
-	Resolve       FieldResolve           `json:"-"`
-	HandlersChain []HandlerFunc          `json:"-"`
-	Desc          string                 `json:"desc"`
+	Name    string                 `json:"name"`
+	Type    Type                   `json:"type"`
+	Args    map[string]*InputField `json:"arguments"`
+	Resolve FieldResolve           `json:"-"`
+	Desc    string                 `json:"desc"`
 }
 
 type InputField struct {

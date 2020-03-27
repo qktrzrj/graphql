@@ -235,6 +235,43 @@ func main() {
 		return getDroid(*args.Id)
 	}, "", schemabuilder.NonNullField)
 
+	schemabuilder.RelayKey(Human{}, "id")
+	query.FieldFunc("allHuman", func() []*Human {
+		return []*Human{
+			luke,
+			vader,
+			han,
+			leia,
+			tarkin,
+		}
+	}, "", schemabuilder.RelayConnection)
+
+	type MyPagination struct {
+		*schemabuilder.PaginationInfo
+		Slice []*Human
+	}
+	builder.Object("myPagination", MyPagination{})
+	query.FieldFunc("myAllHuman", func(args struct {
+		*schemabuilder.ConnectionArgs
+	}) *MyPagination {
+		slice := []*Human{
+			luke,
+			vader,
+			han,
+			leia,
+			tarkin,
+		}
+		return &MyPagination{
+			PaginationInfo: &schemabuilder.PaginationInfo{
+				TotalCount:  len(slice),
+				HasNextPage: true,
+				HasPrevPage: false,
+				Pages:       []string{},
+			},
+			Slice: slice[:*args.First],
+		}
+	}, "", schemabuilder.RelayConnection)
+
 	schema := builder.MustBuild()
 	introspection.AddIntrospectionToSchema(schema)
 	http.Handle("/", graphql.GraphiQLHandler())

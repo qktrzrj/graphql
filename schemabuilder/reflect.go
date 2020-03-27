@@ -13,12 +13,16 @@ type structFields struct {
 	nameIndex map[string]int
 }
 
-func parseFieldTag(field reflect.StructField) (exist, skip, nonnull bool, name, desc string) {
-	tag := field.Tag.Get("graphql")
-	if tag == "" {
+func parseFieldTag(field reflect.StructField) (skip, nonnull bool, name, desc string) {
+	if !ast.IsExported(field.Name) {
+		skip = true
 		return
 	}
-	exist = true
+	tag := field.Tag.Get("graphql")
+	if tag == "" {
+		name = field.Name
+		return
+	}
 	if tag == "-" {
 		skip = true
 		return
@@ -86,7 +90,13 @@ func Convert(args map[string]interface{}, typ reflect.Type) (interface{}, error)
 	fields := structFields{
 		nameIndex: make(map[string]int),
 	}
+	var typPtr bool
+	if typ.Kind() == reflect.Ptr {
+		typPtr = true
+		typ = typ.Elem()
+	}
 	tv := reflect.New(typ).Elem()
+
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		tag := field.Tag.Get("graphql")
@@ -111,12 +121,15 @@ func Convert(args map[string]interface{}, typ reflect.Type) (interface{}, error)
 		if i, ok := fields.nameIndex[k]; ok {
 			f = *fields.list[i]
 		} else {
-			return nil, fmt.Errorf("args field %s not exist in arg struct", k)
+			continue
 		}
 		vv := reflect.ValueOf(v)
 		if err := value(f, vv); err != nil {
 			return nil, err
 		}
+	}
+	if typPtr {
+		return tv.Addr().Interface(), nil
 	}
 	return tv.Interface(), nil
 }
@@ -165,7 +178,10 @@ func value(f reflect.Value, v reflect.Value) error {
 		f.Set(fm)
 		return nil
 	}
-	f.Set(v)
+	if !v.Type().ConvertibleTo(f.Type()) {
+		return nil
+	}
+	f.Set(v.Convert(f.Type()))
 	return nil
 }
 

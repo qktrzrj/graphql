@@ -290,12 +290,6 @@ func safeExecuteResolver(ctx context.Context, field *system.Field, source, args 
 			result, err = nil, fmt.Errorf("graphql: panic: %v\n%s", panicErr, buf)
 		}
 	}()
-	for _, handler := range field.HandlersChain {
-		err := handler(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
 	return field.Resolve(ctx, source, args)
 }
 

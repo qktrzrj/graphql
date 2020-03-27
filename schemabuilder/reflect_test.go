@@ -2,6 +2,7 @@ package schemabuilder_test
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/unrotten/graphql/schemabuilder"
 	"reflect"
 	"testing"
 )
@@ -37,7 +38,7 @@ func TestConvert(t *testing.T) {
 		"e":  map[string]int{"e": 9},
 		"f":  [][]int{{10}},
 	}
-	convert, err := Convert(args, typ)
+	convert, err := schemabuilder.Convert(args, typ)
 	assert.NoError(t, err)
 	a := 1
 	b := "3"

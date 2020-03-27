@@ -407,6 +407,15 @@ func (s *Schema) Build() (*system.Schema, error) {
 		sb.objects[typ] = object
 	}
 
+	sb.objects[paginationInfoType.Elem()] = &Object{
+		Name: paginationInfoType.Name(),
+		Type: PaginationInfo{},
+	}
+	sb.objects[pageInfoType.Elem()] = &Object{
+		Name: "PageInfo",
+		Type: PageInfo{},
+	}
+
 	for _, inputObject := range s.inputObjects {
 		typ := reflect.TypeOf(inputObject.Type)
 		if typ.Kind() != reflect.Struct {
@@ -418,6 +427,11 @@ func (s *Schema) Build() (*system.Schema, error) {
 		}
 
 		sb.inputObjects[typ] = inputObject
+	}
+
+	sb.inputObjects[connectionArgsType.Elem()] = &InputObject{
+		Name: connectionArgsType.Name(),
+		Type: ConnectionArgs{},
 	}
 
 	for _, enum := range s.enums {

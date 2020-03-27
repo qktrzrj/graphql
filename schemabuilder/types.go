@@ -32,44 +32,52 @@ type InputObject struct {
 }
 
 type FieldFuncOption interface {
-	execute(interface{}) error
+	execute(interface{}) (interface{}, error)
 }
 
-type afterBuildFunc func(*system.Field) error
+type afterBuildFunc func(param buildParam) error
 
-func (a afterBuildFunc) execute(arg interface{}) error {
-	if field, ok := arg.(*system.Field); ok {
-		return a(field)
+type buildParam struct {
+	sb        *schemaBuilder
+	f         *system.Field
+	functx    *funcContext
+	fnresolve *fieldResolve
+}
+
+func (a afterBuildFunc) execute(arg interface{}) (interface{}, error) {
+	if param, ok := arg.(buildParam); ok {
+		return nil, a(param)
 	}
-	return fmt.Errorf("afterBuildFunc receive unexpcted arg %v, must be *system.Field", arg)
+	return nil, nil
 }
 
 type executeFuncParam struct {
+	sb     *schemaBuilder
 	ctx    context.Context
 	args   interface{} // when use in afterExecuteFunc, args is null
 	source interface{}
 }
 
-type ExecuteFunc func(ctx context.Context, arg, source interface{}) error
+type ExecuteFunc func(ctx context.Context, args, source interface{}) error
 
-func (b ExecuteFunc) execute(arg interface{}) error {
+func (b ExecuteFunc) execute(arg interface{}) (interface{}, error) {
 	if arg, ok := arg.(executeFuncParam); ok {
-		return b(arg.ctx, arg.args, arg.source)
+		return nil, b(arg.ctx, arg.args, arg.source)
 	}
-	return fmt.Errorf("beforeExecuteFunc receive executeFuncParam but got %v", arg)
+	return nil, nil
 }
 
-type afterExecuteFunc func(ctx context.Context, resource interface{}) error
+type afterExecuteFunc func(param executeFuncParam) (interface{}, error)
 
-func (a afterExecuteFunc) execute(arg interface{}) error {
+func (a afterExecuteFunc) execute(arg interface{}) (interface{}, error) {
 	if arg, ok := arg.(executeFuncParam); ok {
-		return a(arg.ctx, arg.source)
+		return a(arg)
 	}
-	return fmt.Errorf("afterExecuteFunc receive executeFuncParam but got %v", arg)
+	return nil, nil
 }
 
-var NonNullField afterBuildFunc = func(field *system.Field) error {
-	field.Type = &system.NonNull{Type: field.Type}
+var NonNullField afterBuildFunc = func(param buildParam) error {
+	param.f.Type = &system.NonNull{Type: param.f.Type}
 	return nil
 }
 

@@ -3,7 +3,6 @@ package schemabuilder
 import (
 	"fmt"
 	"github.com/unrotten/graphql/system"
-	"go/ast"
 	"reflect"
 )
 
@@ -16,16 +15,9 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*system.Inpu
 	}
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		name := field.Name
-		if !ast.IsExported(name) {
-			return nil, fmt.Errorf("arg field name must can exproted, but %s not", name)
-		}
-		exist, skip, nonnull, tagName, desc := parseFieldTag(field)
+		skip, nonnull, name, desc := parseFieldTag(field)
 		if skip {
 			continue
-		}
-		if exist {
-			name = tagName
 		}
 		fieldTyp, err := sb.getType(field.Type)
 		if err != nil {
@@ -152,16 +144,13 @@ func (sb *schemaBuilder) converToStruct(typ reflect.Type) resolveFunc {
 		conver := make(map[string]interface{})
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
-			exist, skip, _, name, _ := parseFieldTag(typ.Field(i))
+			skip, _, name, _ := parseFieldTag(typ.Field(i))
 			if skip {
 				continue
 			}
 			ftyp := field.Type
 			for ftyp.Kind() == reflect.Ptr {
 				ftyp = ftyp.Elem()
-			}
-			if !exist {
-				name = field.Name
 			}
 			if v, ok := args[name]; ok {
 				vv, err := sb.cacheTypes[ftyp](v)
