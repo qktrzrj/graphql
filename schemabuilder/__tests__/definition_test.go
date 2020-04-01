@@ -3,8 +3,8 @@ package __tests__
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/shyptr/graphql/schemabuilder"
 	"github.com/stretchr/testify/assert"
-	"github.com/unrotten/graphql/schemabuilder"
 	"io/ioutil"
 	"reflect"
 	"testing"
