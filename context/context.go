@@ -3,6 +3,7 @@ package context
 import (
 	"context"
 	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system/ast"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +27,8 @@ type Context struct {
 	HandlersChain         []HandlerFunc
 	Error                 errors.MultiError
 	index                 int8
+	OperationName         string
+	Method                ast.OperationType
 }
 
 var Ctx = &Context{

@@ -62,7 +62,7 @@ func execute(handler *Handler) context.HandlerFunc {
 			ctx.ServerError(err.Error(), http.StatusBadRequest)
 			return
 		}
-		ctx.Set("operationName", param.OperationName)
+		ctx.OperationName = param.OperationName
 		var execute interface{}
 		var exeErr errors.MultiError
 		defer func() {
@@ -97,6 +97,7 @@ func execute(handler *Handler) context.HandlerFunc {
 			exeErr = []*errors.GraphQLError{applyErr}
 			return
 		}
+		ctx.Method = operationType
 		root := handler.Schema.Query
 		if operationType == ast.Mutation {
 			root = handler.Schema.Mutation
