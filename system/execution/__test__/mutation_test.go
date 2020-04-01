@@ -2,11 +2,11 @@ package __test__
 
 import (
 	"errors"
+	errors2 "github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/execution"
 	"github.com/stretchr/testify/assert"
-	errors2 "github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/execution"
 	"testing"
 )
 

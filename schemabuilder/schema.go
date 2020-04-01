@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
 	"reflect"
 	"strconv"
 )
@@ -63,12 +63,16 @@ var DescFieldTyp = reflect.TypeOf(DescField{})
 //     "two":   enumType(2),
 //     "three": enumType(3),
 //   },"")
-func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface{}, descs ...string) {
+func (s *Schema) Enum(name string, val interface{}, enum interface{}, descs ...string) {
 	if name == "" {
 		panic("enum must provide name")
 	}
 	if _, ok := s.enums[name]; ok {
 		panic(fmt.Sprintf("duplicate enum %s", name))
+	}
+	enumMap := reflect.ValueOf(enum)
+	if enumMap.Kind() != reflect.Map {
+		panic("enum must be a map")
 	}
 	typ := reflect.TypeOf(val)
 	if s.enums == nil {
@@ -77,11 +81,15 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 	rMap := make(map[interface{}]string)
 	eMap := make(map[string]interface{})
 	dMap := make(map[string]string)
-	for key, valInterface := range enumMap {
+	for em := enumMap.MapRange(); em.Next(); {
 		desc := ""
-		val := reflect.TypeOf(valInterface)
+		val := em.Value()
+		for val.Kind() == reflect.Interface {
+			val = val.Elem()
+		}
+		valInterface := val.Interface()
 		if val.Kind() != typ.Kind() {
-			if val == DescFieldTyp {
+			if val.Type() == DescFieldTyp {
 				value := reflect.ValueOf(valInterface)
 				desc = value.FieldByName("Desc").String()
 				valInterface = value.FieldByName("Field").Interface()
@@ -92,6 +100,7 @@ func (s *Schema) Enum(name string, val interface{}, enumMap map[string]interface
 				panic("enum types are not equal")
 			}
 		}
+		key := em.Key().String()
 		eMap[key] = valInterface
 		rMap[valInterface] = key
 		dMap[key] = desc

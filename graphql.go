@@ -2,18 +2,23 @@ package graphql
 
 import (
 	"encoding/json"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/execution"
-	"github.com/unrotten/graphql/system/validation"
+	"github.com/shyptr/graphql/context"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/execution"
+	"github.com/shyptr/graphql/system/validation"
 	"net/http"
-	"strings"
 )
+
+func Use(mm ...context.HandlerFunc) {
+	context.Ctx.HandlersChain = append(context.Ctx.HandlersChain, mm...)
+}
 
 type Handler struct {
 	Schema   *system.Schema
 	Executor *execution.Executor
-	ctx      *Context
+	ctx      *context.Context
 }
 
 // Response represents a typical response of a GraphQL server. It may be encoded to JSON directly or
@@ -35,73 +40,67 @@ func HTTPHandler(schema *system.Schema) http.Handler {
 	return h
 }
 
-// Validate validates the given query with the Schema.
-func (s *Handler) Validate(queryString string) []*errors.GraphQLError {
-	doc, qErr := system.Parse(queryString)
-	if qErr != nil {
-		return []*errors.GraphQLError{qErr}
-	}
-
-	return validation.Validate(s.Schema, doc, nil, s.ctx.maxDepth)
-}
-
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "must be post", http.StatusBadRequest)
-	}
-	ctx := *context
-	ctx.Writer, ctx.Request = w, r
+	ctx := *context.Ctx
+	ctx.Writer, ctx.Request = &context.Response{ResponseWriter: w}, r
 	h.ctx = &ctx
-	var params struct {
-		Query         string                 `json:"query"`
-		OperationName string                 `json:"operationName"`
-		Variables     map[string]interface{} `json:"variables"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&params); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	response := h.Exec(h.ctx, params.Query, params.OperationName, params.Variables)
-	responseJSON, err := json.Marshal(response)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(responseJSON)
+	ctx.HandlersChain = append(ctx.HandlersChain, execute(h))
+	ctx.Next()
 }
 
-func (h *Handler) Exec(ctx *Context, queryString string, operationName string, variables map[string]interface{}) *Response {
-	doc, qErr := system.Parse(queryString)
-	if qErr != nil {
-		return &Response{Errors: []*errors.GraphQLError{qErr}}
-	}
+func execute(handler *Handler) context.HandlerFunc {
+	return func(ctx *context.Context) {
+		if ctx.Request.Method == http.MethodOptions {
+			return
+		}
+		if ctx.Request.Method != http.MethodPost {
+			ctx.ServerError("must be post", http.StatusBadRequest)
+			return
+		}
+		param := execution.Params{Context: ctx}
+		if err := json.NewDecoder(ctx.Request.Body).Decode(&param); err != nil {
+			ctx.ServerError(err.Error(), http.StatusBadRequest)
+			return
+		}
+		ctx.Set("operationName", param.OperationName)
+		var execute interface{}
+		var exeErr errors.MultiError
+		defer func() {
+			res := &Response{
+				Data:   execute,
+				Errors: exeErr,
+			}
+			if len(exeErr) > 0 {
+				ctx.Error = append(ctx.Error, exeErr...)
+			}
+			responseJSON, err := json.Marshal(res)
+			if err != nil {
+				ctx.ServerError(err.Error(), http.StatusInternalServerError)
+				return
+			}
+			ctx.Writer.WriteHeader(http.StatusOK)
+			ctx.Writer.Header().Set("Content-Type", "application/json")
+			ctx.Writer.Write(responseJSON)
+		}()
+		doc, parseErr := system.Parse(param.Query)
+		if parseErr != nil {
+			exeErr = []*errors.GraphQLError{parseErr}
+			return
+		}
+		exeErr = validation.Validate(handler.Schema, doc, param.Variables, ctx.MaxDepth)
+		if len(exeErr) > 0 {
+			return
+		}
 
-	errs := validation.Validate(h.Schema, doc, variables, h.ctx.maxDepth)
-	if len(errs) > 0 {
-		return &Response{Errors: errs}
-	}
-
-	selectionSet, err := execution.ApplySelectionSet(doc, operationName, variables)
-	if err != nil {
-		return &Response{Errors: []*errors.GraphQLError{err}}
-	}
-
-	root := h.Schema.Query
-	if strings.ToLower(operationName) == "mutation" {
-		root = h.Schema.Mutation
-	}
-	ctx.builderTyp = root
-	ctx.selectionSet = selectionSet
-	ctx.handlersChain = append(ctx.handlersChain, Execute(h))
-	ctx.Next()
-
-	execute, exeErr := ctx.Execute(), ctx.Err()
-
-	return &Response{
-		Data:   execute,
-		Errors: exeErr.(errors.MultiError),
+		operationType, selectionSet, applyErr := execution.ApplySelectionSet(doc, param.OperationName, param.Variables)
+		if applyErr != nil {
+			exeErr = []*errors.GraphQLError{applyErr}
+			return
+		}
+		root := handler.Schema.Query
+		if operationType == ast.Mutation {
+			root = handler.Schema.Mutation
+		}
+		execute, exeErr = handler.Executor.Execute(ctx, root, nil, selectionSet)
 	}
 }

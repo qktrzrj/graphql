@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/execution"
-	"github.com/unrotten/graphql/system/validation"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/execution"
+	"github.com/shyptr/graphql/system/validation"
 	"sort"
 )
 
@@ -623,7 +623,7 @@ func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, errors
 		return nil, err
 	}
 
-	selectionSet, err := execution.ApplySelectionSet(query, "QUERY", nil)
+	_, selectionSet, err := execution.ApplySelectionSet(query, "QUERY", nil)
 	if err != nil {
 		return nil, []*errors.GraphQLError{err}
 	}

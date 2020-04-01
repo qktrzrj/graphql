@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	errors2 "github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/execution"
-	"github.com/unrotten/graphql/system/validation"
+	errors2 "github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/execution"
+	"github.com/shyptr/graphql/system/validation"
 	"log"
 	"net/http"
 	"strings"
@@ -183,7 +183,7 @@ loop:
 				fmt.Println(err)
 				return
 			}
-			selectionSet, err := execution.ApplySelectionSet(query, "subscription", gql.Variables)
+			_, selectionSet, err := execution.ApplySelectionSet(query, "subscription", gql.Variables)
 			if err != nil {
 				if er := writeResponse(conn, "error", data.Id, nil, err); er != nil {
 					fmt.Println(er)

@@ -2,11 +2,11 @@ package __test__
 
 import (
 	"encoding/json"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system/execution"
+	"github.com/shyptr/graphql/system/introspection"
 	"github.com/stretchr/testify/assert"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system/execution"
-	"github.com/unrotten/graphql/system/introspection"
 	"testing"
 )
 

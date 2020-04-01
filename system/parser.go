@@ -2,10 +2,10 @@ package system
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system/ast"
-	"github.com/unrotten/graphql/system/kinds"
-	"github.com/unrotten/graphql/system/token"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/kinds"
+	"github.com/shyptr/graphql/system/token"
 	"strconv"
 	"strings"
 	"text/scanner"

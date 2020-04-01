@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/unrotten/graphql/system"
+	"github.com/shyptr/graphql/system"
 	"reflect"
 )
 
@@ -154,6 +154,10 @@ var RelayConnection afterBuildFunc = func(param buildParam) error {
 	object, err := validateSliceType(sliceType)
 	if err != nil {
 		return err
+	}
+
+	if _, ok := relayKey[reflect.TypeOf(object.IsTypeOf)]; !ok {
+		return fmt.Errorf("%s don't have a relay key", object.Name)
 	}
 
 	return buildConnectionType(object.Name, sb, sliceType, fctx, field)

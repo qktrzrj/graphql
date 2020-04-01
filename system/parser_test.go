@@ -2,12 +2,12 @@ package system_test
 
 import (
 	"fmt"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/resource"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/kinds"
 	"github.com/stretchr/testify/assert"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/resource"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
-	"github.com/unrotten/graphql/system/kinds"
 	"testing"
 )
 

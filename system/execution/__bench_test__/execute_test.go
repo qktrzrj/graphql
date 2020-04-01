@@ -1,8 +1,8 @@
 package __bench_test__
 
 import (
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system/execution"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system/execution"
 	"testing"
 )
 

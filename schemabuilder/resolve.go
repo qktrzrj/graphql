@@ -2,7 +2,7 @@ package schemabuilder
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/system"
+	"github.com/shyptr/graphql/system"
 	"reflect"
 )
 

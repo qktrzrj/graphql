@@ -3,11 +3,11 @@ package execution
 import (
 	"context"
 	"fmt"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
-	"github.com/unrotten/graphql/system/validation"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/validation"
 	"reflect"
 	"runtime"
 	"strings"
@@ -54,25 +54,25 @@ type Params struct {
 	Context       context.Context        `json:"context"`
 }
 
-func Do(schema *system.Schema, param Params, valid ...bool) (interface{}, error) {
+func Do(schema *system.Schema, param Params, valid ...bool) (interface{}, errors.MultiError) {
 
 	doc, err := system.Parse(param.Query)
 	if err != nil {
-		return nil, fmt.Errorf(err.Error())
+		return nil, []*errors.GraphQLError{err}
 	}
 	if len(valid) == 0 || (len(valid) > 0 && valid[0]) {
 		errs := validation.Validate(schema, doc, param.Variables, 50)
 		if len(errs) > 0 {
-			return nil, fmt.Errorf("%v", errs)
+			return nil, []*errors.GraphQLError{err}
 		}
 	}
 
-	selectionSet, err := ApplySelectionSet(doc, param.OperationName, param.Variables)
+	operationType, selectionSet, err := ApplySelectionSet(doc, param.OperationName, param.Variables)
 	if err != nil {
-		return nil, fmt.Errorf(err.Error())
+		return nil, []*errors.GraphQLError{err}
 	}
 	root := schema.Query
-	if param.OperationName == "mutation" {
+	if operationType == ast.Mutation {
 		root = schema.Mutation
 	}
 	executor := &Executor{}
@@ -258,14 +258,15 @@ func (e *Executor) executeObject(ctx *exeContext, typ *system.Object, source int
 			}
 
 			field := typ.Fields[selection.Name]
-
-			resolved, err := e.resolveAndExecute(ctx, field, source, selection)
-			if err != nil {
-				ctx.addErr(selection.Loc, err)
-				fields[selection.Alias] = nil
-				return
+			if field != nil {
+				resolved, err := e.resolveAndExecute(ctx, field, source, selection)
+				if err != nil {
+					ctx.addErr(selection.Loc, err)
+					fields[selection.Alias] = nil
+					return
+				}
+				fields[selection.Alias] = resolved
 			}
-			fields[selection.Alias] = resolved
 			return
 		}()
 	}

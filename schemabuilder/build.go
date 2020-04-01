@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/unrotten/graphql/system"
+	"github.com/shyptr/graphql/system"
 	"reflect"
 	"time"
 )
@@ -239,7 +239,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 			Desc:       obj.Desc,
 			Interfaces: map[string]*system.Interface{},
 			Fields:     map[string]*system.Field{},
-			IsTypeOf:   reflect.New(typ).Interface(),
+			IsTypeOf:   reflect.New(typ).Elem().Interface(),
 		}
 
 		sb.types[reflect.PtrTo(typ)] = object
@@ -458,7 +458,7 @@ func (sb *schemaBuilder) getTypeFunction(fn interface{}, source reflect.Type) (s
 	for i := 0; i < typ.NumIn(); i++ {
 		inTyp := typ.In(i)
 		switch inTyp {
-		case reflect.TypeOf(context.Background()):
+		case contextType, gcontextType:
 			fctx.hasContext = true
 		case source, reflect.New(source).Type():
 			fctx.hasSource = true
@@ -541,7 +541,7 @@ func (funcCtx *funcContext) getFuncInputTypes() []reflect.Type {
 func (funcCtx *funcContext) consumeContextAndSource(in []reflect.Type) []reflect.Type {
 	ptr := reflect.PtrTo(funcCtx.typ)
 
-	if len(in) > 0 && in[0] == reflect.TypeOf(context.Background()) {
+	if len(in) > 0 && (in[0] == contextType || in[0] == gcontextType) {
 		funcCtx.hasContext = true
 		in = in[1:]
 	}
@@ -677,6 +677,12 @@ func (funcCtx *funcContext) prepareResolveArgs(sb *schemaBuilder, source interfa
 			args, err := argResolve(args)
 			if err != nil {
 				return nil, err
+			}
+			if validate != nil {
+				err = validate.Struct(args)
+				if err != nil {
+					return nil, err
+				}
 			}
 			in = append(in, reflect.ValueOf(args))
 		} else {

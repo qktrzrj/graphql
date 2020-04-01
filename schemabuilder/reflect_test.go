@@ -1,8 +1,8 @@
 package schemabuilder_test
 
 import (
+	"github.com/shyptr/graphql/schemabuilder"
 	"github.com/stretchr/testify/assert"
-	"github.com/unrotten/graphql/schemabuilder"
 	"reflect"
 	"testing"
 )

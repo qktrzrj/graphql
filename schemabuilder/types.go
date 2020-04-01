@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
 	"math"
 	"reflect"
 	"time"
@@ -146,7 +146,7 @@ type Directive struct {
 //        userID, err := db.AddUser(ctx, args.FirstName, args.LastName)
 //        return userID, err
 //    })
-func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOption ...FieldFuncOption) {
+func (s *Object) FieldFunc(name string, fn interface{}, options ...interface{}) {
 	if s.FieldResolve == nil {
 		s.FieldResolve = make(map[string]*fieldResolve)
 	}
@@ -155,15 +155,19 @@ func (s *Object) FieldFunc(name string, fn interface{}, desc string, fieldFuncOp
 		panic("duplicate method")
 	}
 
-	resolve := &fieldResolve{fn: fn, desc: desc}
-	for _, opt := range fieldFuncOption {
+	resolve := &fieldResolve{fn: fn}
+	for _, opt := range options {
 		switch opt := opt.(type) {
 		case afterBuildFunc:
 			resolve.buildChain = append(resolve.buildChain, opt)
 		case ExecuteFunc:
 			resolve.handleChain = append(resolve.executeChain, opt)
-		default:
+		case string:
+			resolve.desc = opt
+		case FieldFuncOption:
 			resolve.executeChain = append(resolve.handleChain, opt)
+		default:
+			panic("only received string or FieldFuncOption interface for options")
 		}
 	}
 

@@ -2,9 +2,9 @@ package utils
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
-	"github.com/unrotten/graphql/system/kinds"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/kinds"
 )
 
 func TypeFromAst(schema *system.Schema, node ast.Node) system.Type {

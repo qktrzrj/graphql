@@ -1,8 +1,8 @@
 package ast
 
 import (
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system/kinds"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system/kinds"
 )
 
 // There are three types of operations that GraphQL models:

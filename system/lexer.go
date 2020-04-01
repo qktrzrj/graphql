@@ -3,8 +3,8 @@ package system
 import (
 	"bytes"
 	"fmt"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system/token"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system/token"
 	"strings"
 	"text/scanner"
 )

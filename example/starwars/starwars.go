@@ -2,9 +2,9 @@ package main
 
 import (
 	"errors"
-	"github.com/unrotten/graphql"
-	"github.com/unrotten/graphql/schemabuilder"
-	"github.com/unrotten/graphql/system/introspection"
+	"github.com/shyptr/graphql"
+	"github.com/shyptr/graphql/schemabuilder"
+	"github.com/shyptr/graphql/system/introspection"
 	"log"
 	"net/http"
 	_ "net/http/pprof"

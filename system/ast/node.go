@@ -1,6 +1,6 @@
 package ast
 
-import "github.com/unrotten/graphql/errors"
+import "github.com/shyptr/graphql/errors"
 
 type Node interface {
 	GetKind() string

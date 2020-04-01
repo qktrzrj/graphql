@@ -2,11 +2,11 @@ package validation
 
 import (
 	"fmt"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
-	"github.com/unrotten/graphql/system/kinds"
-	"github.com/unrotten/graphql/system/utils"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/kinds"
+	"github.com/shyptr/graphql/system/utils"
 	"math"
 	"reflect"
 	"strconv"

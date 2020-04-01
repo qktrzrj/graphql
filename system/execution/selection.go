@@ -1,17 +1,17 @@
 package execution
 
 import (
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system"
-	"github.com/unrotten/graphql/system/ast"
-	"github.com/unrotten/graphql/system/utils"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/system/utils"
 	"reflect"
 )
 
-func ApplySelectionSet(document *system.Document, operationName string, vars map[string]interface{}) (*system.SelectionSet, *errors.GraphQLError) {
+func ApplySelectionSet(document *system.Document, operationName string, vars map[string]interface{}) (ast.OperationType, *system.SelectionSet, *errors.GraphQLError) {
 
 	if len(document.Operations) == 0 {
-		return nil, errors.New("no operations in query document")
+		return "", nil, errors.New("no operations in query document")
 	}
 	if vars == nil {
 		vars = make(map[string]interface{})
@@ -19,7 +19,7 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 	var op *ast.OperationDefinition
 	if operationName == "" {
 		if len(document.Operations) > 1 {
-			return nil, errors.New("more than one operation in query document and no operation name given")
+			return "", nil, errors.New("more than one operation in query document and no operation name given")
 		}
 		for _, p := range document.Operations {
 			// return the one and only operation
@@ -29,7 +29,7 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 	} else {
 		op = utils.GetOperation(document.Operations, operationName)
 		if op == nil {
-			return nil, errors.New("no operation with name %q", operationName)
+			return "", nil, errors.New("no operation with name %q", operationName)
 		}
 	}
 	rv := &system.SelectionSet{}
@@ -48,7 +48,7 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 			if _, ok := vars[v.Var.Name.Name]; !ok && v.Var != nil && v.DefaultValue != nil {
 				value, err := system.ValueToJson(v.DefaultValue, nil)
 				if err != nil {
-					return nil, err
+					return "", nil, err
 				} else {
 					vars[v.Var.Name.Name] = value
 				}
@@ -56,7 +56,7 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 		}
 		selectionSet, err := parseSelectionSet(fragment.SelectionSet, globalFragments, vars)
 		if err != nil {
-			return rv, err
+			return "", rv, err
 		}
 		globalFragments[fragment.Name.Name].SelectionSet = selectionSet
 	}
@@ -67,7 +67,7 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 			if v.DefaultValue != nil {
 				value, err := system.ValueToJson(v.DefaultValue, nil)
 				if err != nil {
-					return nil, err
+					return "", nil, err
 				} else {
 					vars[v.Var.Name.Name] = value
 				}
@@ -76,20 +76,20 @@ func ApplySelectionSet(document *system.Document, operationName string, vars map
 	}
 	selectionSet, err := parseSelectionSet(op.SelectionSet, globalFragments, vars)
 	if err != nil {
-		return rv, err
+		return "", rv, err
 	}
 
 	if err := detectCyclesAndUnusedFragments(selectionSet, globalFragments); err != nil {
-		return rv, err
+		return "", rv, err
 	}
 
 	if err := detectConflicts(selectionSet); err != nil {
-		return rv, err
+		return "", rv, err
 	}
 
 	rv = selectionSet
 
-	return rv, nil
+	return op.Operation, rv, nil
 }
 
 // parseSelectionSet takes a grapqhl-go selection set and converts it to a simplified *SelectionSet, bindings vars

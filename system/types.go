@@ -3,8 +3,8 @@ package system
 import (
 	"context"
 	"fmt"
-	"github.com/unrotten/graphql/errors"
-	"github.com/unrotten/graphql/system/ast"
+	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/system/ast"
 )
 
 // Operation corresponds to GraphQLType
