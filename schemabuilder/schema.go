@@ -204,7 +204,7 @@ func (s *Schema) InputObject(name string, typ interface{}, desc ...string) *Inpu
 //		panic(err)
 //	}
 //}
-func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...UnmarshalFunc) *Scalar {
+func (s *Schema) Scalar(name string, tp interface{}, options ...interface{}) *Scalar {
 
 	typ := reflect.TypeOf(tp)
 	if typ.Kind() == reflect.Ptr {
@@ -219,13 +219,30 @@ func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...Unmarsh
 		panic("duplicate scalar name")
 	}
 
-	if len(ufn) == 0 {
+	var ufn UnmarshalFunc
+	var desc string
+
+	for _, op := range options {
+		switch op := op.(type) {
+		case string:
+			desc = op
+		case UnmarshalFunc:
+			ufn = op
+		default:
+			if reflect.TypeOf(op).ConvertibleTo(UnmarshalFuncTyp) {
+				ufn = reflect.ValueOf(op).Convert(UnmarshalFuncTyp).Interface().(UnmarshalFunc)
+				continue
+			}
+			panic("scalar options only receive string for desc and UnmarshalFunc for parseFunc")
+		}
+	}
+
+	if ufn == nil {
 		if !reflect.PtrTo(typ).Implements(reflect.TypeOf(new(json.Unmarshaler)).Elem()) {
 			panic("either UnmarshalFunc should be provided or the provided type should implement json.Unmarshaler interface")
 		}
-		ufn = make([]UnmarshalFunc, 1)
 		f, _ := reflect.PtrTo(typ).MethodByName("UnmarshalJSON")
-		ufn[0] = func(value interface{}, dest reflect.Value) error {
+		ufn = func(value interface{}, dest reflect.Value) error {
 			var x interface{}
 			switch v := value.(type) {
 			case []byte:
@@ -258,7 +275,7 @@ func (s *Schema) Scalar(name string, tp interface{}, desc string, ufn ...Unmarsh
 			return nil, nil
 		}
 		outVal := reflect.New(typ).Elem()
-		err := ufn[0](i, outVal)
+		err := ufn(i, outVal)
 		return outVal.Interface(), err
 	}
 	scalar := &Scalar{

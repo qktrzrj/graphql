@@ -148,7 +148,7 @@ func Init2() {
 	build := schemabuilder.NewSchema()
 
 	NamedType := build.Interface("Named", new(Named), nil, "")
-	NamedType.FieldFunc("name", "Name", "")
+	NamedType.FieldFunc("name", "GetName", "")
 
 	LifeType := build.Interface("Life", new(Life), nil, "")
 	LifeType.FieldFunc("progeny", "Progeny", "")

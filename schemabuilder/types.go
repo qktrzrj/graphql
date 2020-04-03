@@ -264,6 +264,8 @@ type inputFieldResolve struct {
 // UnmarshalFunc is used to unmarshal scalar value from JSON
 type UnmarshalFunc func(value interface{}, dest reflect.Value) error
 
+var UnmarshalFuncTyp = reflect.TypeOf(*new(UnmarshalFunc))
+
 var Boolean = &Scalar{
 	Name:      "Boolean",
 	Desc:      "bool is the set of boolean values, true and false.",

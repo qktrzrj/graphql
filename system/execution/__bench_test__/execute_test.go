@@ -36,7 +36,7 @@ func BenchmarkExecutor_Execute(b *testing.B) {
 	b.ReportAllocs()
 	build := schemabuilder.NewSchema()
 	PetType := build.Interface("Pet", new(Pet), nil, "")
-	PetType.FieldFunc("name", func(source Pet) string { return source.GetName() }, "")
+	PetType.FieldFunc("name", "GetName", "")
 
 	DogType := build.Object("Dog", Dog{}, "")
 	DogType.InterfaceList(PetType)

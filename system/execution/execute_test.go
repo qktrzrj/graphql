@@ -44,7 +44,7 @@ func TestExecutor_Execute(t *testing.T) {
 		t.Run("isTypeOf used to resolve runtime type for Interface", func(t *testing.T) {
 			build := schemabuilder.NewSchema()
 			PetType := build.Interface("Pet", new(Pet), nil, "")
-			PetType.FieldFunc("name", func(source Pet) string { return source.GetName() }, "")
+			PetType.FieldFunc("name", "GetName", "")
 
 			DogType := build.Object("Dog", Dog{}, "")
 			DogType.InterfaceList(PetType)
@@ -72,8 +72,8 @@ func TestExecutor_Execute(t *testing.T) {
     `
 			result, err := execution.Do(schema, execution.Params{Query: source})
 			assert.Equal(t, errors.MultiError(nil), err)
-			marshal, err := json.Marshal(result)
-			assert.NoError(t, err)
+			marshal, err2 := json.Marshal(result)
+			assert.NoError(t, err2)
 			assert.JSONEq(t, `{
 	"pets": [{
 		"name": "Odie",
@@ -117,8 +117,8 @@ func TestExecutor_Execute(t *testing.T) {
     `
 			result, err := execution.Do(schema, execution.Params{Query: source})
 			assert.Equal(t, errors.MultiError(nil), err)
-			marshal, err := json.Marshal(result)
-			assert.NoError(t, err)
+			marshal, err2 := json.Marshal(result)
+			assert.NoError(t, err2)
 			assert.JSONEq(t, `{
 	"pets": [{
 		"name": "Odie",
@@ -140,8 +140,8 @@ func TestExecutor_Execute(t *testing.T) {
 		t.Run("works without directives", func(t *testing.T) {
 			result, err := execution.Do(schema, execution.Params{Query: "{ a, b }"})
 			assert.Equal(t, errors.MultiError(nil), err)
-			marshal, err := json.Marshal(result)
-			assert.NoError(t, err)
+			marshal, err2 := json.Marshal(result)
+			assert.NoError(t, err2)
 			assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 		})
 
@@ -149,32 +149,32 @@ func TestExecutor_Execute(t *testing.T) {
 			t.Run("if true includes scalar", func(t *testing.T) {
 				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @include(if: true) }"})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("if false omits on scalar", func(t *testing.T) {
 				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @include(if: false) }"})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
 			t.Run("unless false includes scalar", func(t *testing.T) {
 				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @skip(if: false) }"})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
 			t.Run("unless true omits scalar", func(t *testing.T) {
 				result, err := execution.Do(schema, execution.Params{Query: "{ a, b @skip(if: true) }"})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 		})
@@ -191,8 +191,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
@@ -207,8 +207,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
@@ -223,8 +223,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 		})
@@ -240,8 +240,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
@@ -255,8 +255,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
@@ -270,8 +270,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
@@ -285,8 +285,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 		})
@@ -302,8 +302,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
@@ -317,8 +317,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
@@ -332,8 +332,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
@@ -347,8 +347,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 		})
@@ -362,8 +362,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a","b":"b"}`, string(marshal))
 			})
 
@@ -375,8 +375,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 
@@ -388,8 +388,8 @@ func TestExecutor_Execute(t *testing.T) {
         }
       `})
 				assert.Equal(t, errors.MultiError(nil), err)
-				marshal, err := json.Marshal(result)
-				assert.NoError(t, err)
+				marshal, err2 := json.Marshal(result)
+				assert.NoError(t, err2)
 				assert.JSONEq(t, `{"a":"a"}`, string(marshal))
 			})
 		})
@@ -418,8 +418,8 @@ func TestExecutor_Execute(t *testing.T) {
 			schema := build.MustBuild()
 			result, err := execution.Do(schema, execution.Params{Query: "{a}"})
 			assert.Equal(t, errors.MultiError(nil), err)
-			marshal, err := json.Marshal(result)
-			assert.NoError(t, err)
+			marshal, err2 := json.Marshal(result)
+			assert.NoError(t, err2)
 			assert.JSONEq(t, `{"a":"rootValue"}`, string(marshal))
 		})
 
@@ -486,8 +486,8 @@ func TestExecutor_Execute(t *testing.T) {
       }
     `, Variables: map[string]interface{}{"size": float64(100)}})
 			assert.Equal(t, errors.MultiError(nil), err)
-			marshal, err := json.Marshal(result)
-			assert.NoError(t, err)
+			marshal, err2 := json.Marshal(result)
+			assert.NoError(t, err2)
 			assert.JSONEq(t, `{
 	"Data": {
 		"a": "Apple",
@@ -537,8 +537,8 @@ func TestExecutor_Execute(t *testing.T) {
       }
     `})
 			assert.Equal(t, errors.MultiError(nil), err)
-			marshal, err := json.Marshal(result)
-			assert.NoError(t, err)
+			marshal, err2 := json.Marshal(result)
+			assert.NoError(t, err2)
 			assert.JSONEq(t, `{
 	"a": "Apple",
 	"b": "Banana",

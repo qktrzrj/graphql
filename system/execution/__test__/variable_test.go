@@ -120,13 +120,11 @@ func Init3() {
 	}) string {
 		return fieldWithInputArg(args)
 	}, "")
-	object.FieldArgsDefault("fieldWithDefaultArgumentValue", "input", "Hello World")
 	object.FieldFunc("fieldWithNonNullableStringInputAndDefaultArgumentValue", func(args struct {
 		Input string `graphql:"input"`
 	}) string {
 		return fieldWithInputArg(args)
 	}, "")
-	object.FieldArgsDefault("fieldWithNonNullableStringInputAndDefaultArgumentValue", "input", "Hello World")
 	object.FieldFunc("fieldWithNestedInputObject", func(args struct {
 		Input *TestNestedInputObject `graphql:"input"`
 	}) string {
