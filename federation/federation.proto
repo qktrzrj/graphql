@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package graphql;
+
+import "google/protobuf/descriptor.proto";
+import "google/protobuf/any.proto";
+
+option go_package = "federation";
+
+service FederationService {
+    rpc Execute (FederationRequest) returns (FederationResponse) {
+    }
+}
+
+message FederationRequest {
+    string kind = 1;
+    SelectionSet selectionSet = 2;
+}
+
+message SelectionSet {
+    Location loc = 1;
+    repeated Selection selections = 2;
+    repeated FragmentSpread fragments = 3;
+}
+
+message Location {
+    int32 line = 1;
+    int32 column = 2;
+}
+
+message Selection {
+    string name = 1;
+    string alias = 2;
+    google.protobuf.Any args = 3;
+    SelectionSet selectionSet = 4;
+    repeated Directive directives = 5;
+    Location loc = 6;
+}
+
+message Directive {
+    string name = 1;
+    google.protobuf.Any argVals = 2;
+    Location loc = 3;
+}
+
+
+message FragmentSpread {
+    Location loc = 1;
+    FragmentDefinition fragment = 2;
+    repeated Directive directives = 3;
+}
+
+message FragmentDefinition {
+    string name = 1;
+    string on = 2;
+    SelectionSet selectionSet = 3;
+    Location loc = 4;
+}
+
+message FederationResponse {
+    google.protobuf.Any data = 1;
+    repeated GraphQLError errors = 2;
+}
+
+message GraphQLError {
+    string message = 1;
+    repeated Location locations = 2;
+    repeated string path = 3;
+}
+

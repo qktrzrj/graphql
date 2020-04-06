@@ -458,7 +458,7 @@ func (sb *schemaBuilder) getTypeFunction(fn interface{}, source reflect.Type) (s
 	for i := 0; i < typ.NumIn(); i++ {
 		inTyp := typ.In(i)
 		switch inTyp {
-		case contextType, gcontextType:
+		case contextType:
 			fctx.hasContext = true
 		case source, reflect.New(source).Type():
 			fctx.hasSource = true
@@ -541,7 +541,7 @@ func (funcCtx *funcContext) getFuncInputTypes() []reflect.Type {
 func (funcCtx *funcContext) consumeContextAndSource(in []reflect.Type) []reflect.Type {
 	ptr := reflect.PtrTo(funcCtx.typ)
 
-	if len(in) > 0 && (in[0] == contextType || in[0] == gcontextType) {
+	if len(in) > 0 && in[0] == contextType {
 		funcCtx.hasContext = true
 		in = in[1:]
 	}

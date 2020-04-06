@@ -3,7 +3,6 @@ package schemabuilder
 import (
 	"context"
 	"fmt"
-	context2 "github.com/shyptr/graphql/context"
 	"go/ast"
 	"reflect"
 	"strings"
@@ -189,4 +188,3 @@ func value(f reflect.Value, v reflect.Value) error {
 // Common Types that we will need to perform type assertions against.
 var errType = reflect.TypeOf((*error)(nil)).Elem()
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
-var gcontextType = reflect.TypeOf(&context2.Context{})

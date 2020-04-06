@@ -235,12 +235,6 @@ type Selection struct {
 	SelectionSet *SelectionSet
 	Directives   []*Directive
 	Loc          errors.Location
-
-	UseBatch bool
-
-	// The parsed flag is used to make sure the args for this Selection are only
-	// parsed once.
-	parsed bool
 }
 
 // A FragmentDefinition represents a reusable part of a GraphQL query

@@ -91,5 +91,5 @@ func main() {
 	introspection.AddIntrospectionToSchema(schema)
 	http.Handle("/", graphql.GraphiQLHandler())
 	http.Handle("/query", graphql.HTTPHandler(schema))
-	http.ListenAndServe(":3000", nil)
+	http.ListenAndServe(":8008", nil)
 }

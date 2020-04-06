@@ -1,4 +1,4 @@
-package resource
+package __test__
 
 import "io/ioutil"
 

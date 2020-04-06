@@ -17,12 +17,6 @@ type Executor struct {
 	iterate bool
 }
 
-type computationOutput struct {
-	Function  interface{}
-	Field     *system.Field
-	Selection *ast.Selection
-}
-
 type exeContext struct {
 	context.Context
 	errs errors.MultiError

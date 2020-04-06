@@ -225,6 +225,7 @@ func parseDirectives(directives []*ast.Directive, vars map[string]interface{}) (
 		d = append(d, &system.Directive{
 			Name:    directive.Name.Name,
 			ArgVals: args,
+			Loc:     directive.Loc,
 		})
 	}
 	return d, nil

@@ -3,8 +3,8 @@ package system_test
 import (
 	"fmt"
 	"github.com/shyptr/graphql/errors"
-	"github.com/shyptr/graphql/resource"
 	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/system/__test__"
 	"github.com/shyptr/graphql/system/ast"
 	"github.com/shyptr/graphql/system/kinds"
 	"github.com/stretchr/testify/assert"
@@ -111,7 +111,7 @@ func TestParser(t *testing.T) {
 	})
 
 	t.Run("parses kitchen sink", func(t *testing.T) {
-		_, err := system.ParseDocument(string(resource.KitchenSinkQuery))
+		_, err := system.ParseDocument(string(__test__.KitchenSinkQuery))
 		assert.Equal(t, NilGraphQLError, err)
 	})
 

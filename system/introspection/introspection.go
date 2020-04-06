@@ -60,6 +60,7 @@ import (
 // }
 type introspection struct {
 	types        map[string]system.Type
+	directives   []__Directive
 	query        system.Type
 	mutation     system.Type
 	subscription system.Type
@@ -127,41 +128,41 @@ type __Type struct {
 	OfType system.Type `graphql:"-" json:"-"`
 }
 
-var includeDirective = __Directive{
-	Name: "include",
-	Desc: "Directs the executor to include this field or fragment only when the `if` argument is true.",
-	Locations: []DirectiveLocation{
-		Field,
-		FragmentSpread,
-		InlineFragment,
-	},
-	Args: []__InputValue{
-		{
-			Name: "if",
-			Type: __Type{OfType: &system.Scalar{Name: "Boolean"}},
-			Desc: "Included when true.",
-		},
-	},
-	IsDeprecated: false,
-}
-
-var skipDirective = __Directive{
-	Name: "skip",
-	Desc: "Directs the executor to skip this field or fragment only when the `if` argument is true.",
-	Locations: []DirectiveLocation{
-		Field,
-		FragmentSpread,
-		InlineFragment,
-	},
-	Args: []__InputValue{
-		{
-			Name: "if",
-			Type: __Type{OfType: &system.Scalar{Name: "Boolean"}},
-			Desc: "Skipped when true.",
-		},
-	},
-	IsDeprecated: false,
-}
+//var includeDirective = __Directive{
+//	Name: "include",
+//	Desc: "Directs the executor to include this field or fragment only when the `if` argument is true.",
+//	Locations: []DirectiveLocation{
+//		Field,
+//		FragmentSpread,
+//		InlineFragment,
+//	},
+//	Args: []__InputValue{
+//		{
+//			Name: "if",
+//			Type: __Type{OfType: &system.Scalar{Name: "Boolean"}},
+//			Desc: "Included when true.",
+//		},
+//	},
+//	IsDeprecated: false,
+//}
+//
+//var skipDirective = __Directive{
+//	Name: "skip",
+//	Desc: "Directs the executor to skip this field or fragment only when the `if` argument is true.",
+//	Locations: []DirectiveLocation{
+//		Field,
+//		FragmentSpread,
+//		InlineFragment,
+//	},
+//	Args: []__InputValue{
+//		{
+//			Name: "if",
+//			Type: __Type{OfType: &system.Scalar{Name: "Boolean"}},
+//			Desc: "Skipped when true.",
+//		},
+//	},
+//	IsDeprecated: false,
+//}
 
 func (s *introspection) registerType(schema *schemabuilder.Schema) {
 	schema.Enum("__TypeKind", TypeKind(0), map[string]interface{}{
@@ -516,7 +517,7 @@ func (s *introspection) registerQuery(schema *schemabuilder.Schema) {
 
 		sc := &__Schema{
 			Types:      types,
-			Directives: []__Directive{includeDirective, skipDirective},
+			Directives: s.directives,
 		}
 		if s.query != nil {
 			sc.QueryType = &__Type{OfType: s.query}
@@ -572,6 +573,36 @@ func AddIntrospectionToSchema(schema *system.Schema) {
 	is := &introspection{
 		types: types,
 	}
+	for _, d := range schema.Directives {
+		is.directives = append(is.directives, __Directive{
+			Name: d.Name,
+			Desc: d.Desc,
+			Locations: func() []DirectiveLocation {
+				locs := make([]DirectiveLocation, len(d.Locs))
+				for index, loc := range d.Locs {
+					locs[index] = DirectiveLocation(loc)
+				}
+				return locs
+			}(),
+			Args: func() []__InputValue {
+				inputValues := make([]__InputValue, len(d.Args))
+				for index, arguemnt := range d.Args {
+					var defaultValue string
+					if arguemnt.DefaultValue != nil {
+						defaultValue = fmt.Sprintf("%s", defaultValue)
+					}
+					inputValues[index] = __InputValue{
+						Name:         arguemnt.Name,
+						Desc:         arguemnt.Desc,
+						Type:         __Type{OfType: arguemnt.Type},
+						DefaultValue: &defaultValue,
+					}
+				}
+				return inputValues
+			}(),
+			IsDeprecated: false,
+		})
+	}
 	isSchema := is.schema()
 
 	copyObject(schema.Query, isSchema.Query)
@@ -610,11 +641,11 @@ func copyObject(s system.Type, d system.Type) {
 
 // ComputeSchemaJSON returns the result of executing a GraphQL introspection
 // query.
-func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, errors.MultiError) {
+func ComputeSchemaJSON(schemaBuilderSchema *schemabuilder.Schema) ([]byte, errors.MultiError) {
 	schema := schemaBuilderSchema.MustBuild()
 	AddIntrospectionToSchema(schema)
 
-	query, err := system.Parse(introspectionQuery)
+	query, err := system.Parse(IntrospectionQuery)
 	if err != nil {
 		return nil, []*errors.GraphQLError{err}
 	}
@@ -623,7 +654,7 @@ func ComputeSchemaJSON(schemaBuilderSchema schemabuilder.Schema) ([]byte, errors
 		return nil, err
 	}
 
-	_, selectionSet, err := execution.ApplySelectionSet(query, "QUERY", nil)
+	_, selectionSet, err := execution.ApplySelectionSet(query, "IntrospectionQuery", nil)
 	if err != nil {
 		return nil, []*errors.GraphQLError{err}
 	}

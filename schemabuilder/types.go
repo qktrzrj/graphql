@@ -738,11 +738,11 @@ var AnyScalar = &Scalar{
 }
 
 type includeArg struct {
-	If bool `graphql:"if,Included when true."`
+	If bool `graphql:"if;Included when true."`
 }
 
 type skipArg struct {
-	If bool `graphql:"if,Skipped when true."`
+	If bool `graphql:"if;Skipped when true."`
 }
 
 var IncludeDirective = &Directive{

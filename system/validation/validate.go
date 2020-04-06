@@ -566,13 +566,13 @@ func validateValue(ctx *opContext, v *ast.VariableDefinition, val interface{}, v
 		}
 		ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %s.\nExpected type \"%s\", found %s.", name, e, vtyp.String(), e)
 	case *system.Scalar:
-		if val == nil {
-			return
-		}
-		_, err := vtyp.ParseValue(val)
-		if err != nil {
-			ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %v.\nExpected type \"%s\", found %v.", name, val, vtyp.String(), val)
-		}
+		//if val == nil || vtyp.ParseValue == nil {
+		//	return
+		//}
+		//_, err := vtyp.ParseValue(val)
+		//if err != nil {
+		//	ctx.addErr(v.Loc, "VariablesOfCorrectType", "Variable \"%s\" has invalid value %v.\nExpected type \"%s\", found %v.", name, val, vtyp.String(), val)
+		//}
 	case *system.InputObject:
 		if val == nil {
 			return
@@ -853,6 +853,9 @@ func validateBasicValue(ctx *opContext, v ast.Value, t system.Type) bool {
 		case "ID":
 			return v.GetKind() == kinds.IntValue || v.GetKind() == kinds.StringValue
 		default:
+			if t.ParseLiteral == nil {
+				return true
+			}
 			if err := t.ParseLiteral(v); err != nil {
 				ctx.addErr(v.Location(), "ValuesOfCorrectType", `Expected value of type "%s", found "%s"; %v`, t.Name, v.GetValue(), err)
 			}

@@ -14,8 +14,8 @@ type OperationType string
 
 const (
 	Query        OperationType = "QUERY"
-	Mutation                   = "MUTATION"
-	Subscription               = "SUBSCRIPTION"
+	Mutation     OperationType = "MUTATION"
+	Subscription OperationType = "SUBSCRIPTION"
 )
 
 // Each operation is represented by an optional operation name and a selection set.
