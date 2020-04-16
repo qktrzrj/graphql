@@ -38,7 +38,7 @@ var db = []*Person{
 }
 
 func RegisterPerson(schema *schemabuilder.Schema) {
-	schema.Object("person", Person{}, "each person has an identity, student or teacher")
+    person:=schema.Object("person", Person{}, "each person has an identity, student or teacher")
     person.FieldFunc("age", func(source Person)int {
     		switch source.Name {
     		case "john":
