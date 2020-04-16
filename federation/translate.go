@@ -5,7 +5,7 @@ import (
 	"github.com/golang/protobuf/ptypes/any"
 	"github.com/shyptr/graphql"
 	"github.com/shyptr/graphql/errors"
-	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/internal"
 )
 
 func ConvertRequest(request *FederationRequest) *Plan {
@@ -18,7 +18,7 @@ func ConvertRequest(request *FederationRequest) *Plan {
 	}
 }
 
-func ConvertToSelectionSet(s *system.SelectionSet) *SelectionSet {
+func ConvertToSelectionSet(s *internal.SelectionSet) *SelectionSet {
 	if s == nil {
 		return nil
 	}
@@ -104,21 +104,21 @@ func convertErrors(errs []*GraphQLError) errors.MultiError {
 	return nil
 }
 
-func convertSelectionSet(selectionSet *SelectionSet) *system.SelectionSet {
+func convertSelectionSet(selectionSet *SelectionSet) *internal.SelectionSet {
 	if selectionSet == nil {
 		return nil
 	}
-	return &system.SelectionSet{
+	return &internal.SelectionSet{
 		Loc:        convertLoc(selectionSet.Loc),
 		Selections: convertSelections(selectionSet.GetSelections()),
 		Fragments:  convertFragments(selectionSet.GetFragments()),
 	}
 }
 
-func convertFragments(f []*FragmentSpread) []*system.FragmentSpread {
-	var fragments []*system.FragmentSpread
+func convertFragments(f []*FragmentSpread) []*internal.FragmentSpread {
+	var fragments []*internal.FragmentSpread
 	for _, fs := range f {
-		fragments = append(fragments, &system.FragmentSpread{
+		fragments = append(fragments, &internal.FragmentSpread{
 			Loc:        convertLoc(fs.GetLoc()),
 			Fragment:   convertFragmentDefinitions(fs.GetFragment()),
 			Directives: convertDirectives(fs.GetDirectives()),
@@ -127,7 +127,7 @@ func convertFragments(f []*FragmentSpread) []*system.FragmentSpread {
 	return fragments
 }
 
-func convertToFragments(f []*system.FragmentSpread) []*FragmentSpread {
+func convertToFragments(f []*internal.FragmentSpread) []*FragmentSpread {
 	var fragments []*FragmentSpread
 	for _, fs := range f {
 		fragments = append(fragments, &FragmentSpread{
@@ -139,7 +139,7 @@ func convertToFragments(f []*system.FragmentSpread) []*FragmentSpread {
 	return fragments
 }
 
-func convertToFragmentDefinitions(f *system.FragmentDefinition) *FragmentDefinition {
+func convertToFragmentDefinitions(f *internal.FragmentDefinition) *FragmentDefinition {
 	if f == nil {
 		return nil
 	}
@@ -151,11 +151,11 @@ func convertToFragmentDefinitions(f *system.FragmentDefinition) *FragmentDefinit
 	}
 }
 
-func convertFragmentDefinitions(f *FragmentDefinition) *system.FragmentDefinition {
+func convertFragmentDefinitions(f *FragmentDefinition) *internal.FragmentDefinition {
 	if f == nil {
 		return nil
 	}
-	return &system.FragmentDefinition{
+	return &internal.FragmentDefinition{
 		Name:         f.GetName(),
 		On:           f.GetOn(),
 		SelectionSet: convertSelectionSet(f.GetSelectionSet()),
@@ -163,10 +163,10 @@ func convertFragmentDefinitions(f *FragmentDefinition) *system.FragmentDefinitio
 	}
 }
 
-func convertToSelections(selections []*system.Selection) []*Selection {
+func convertToSelections(selections []*internal.Selection) []*Selection {
 	var sels []*Selection
 	for _, s := range selections {
-		args, _ := json.Marshal(s.Alias)
+		args, _ := json.Marshal(s.Args)
 		sels = append(sels, &Selection{
 			Name:         s.Name,
 			Alias:        s.Alias,
@@ -179,10 +179,10 @@ func convertToSelections(selections []*system.Selection) []*Selection {
 	return sels
 }
 
-func convertSelections(selections []*Selection) []*system.Selection {
-	var sels []*system.Selection
+func convertSelections(selections []*Selection) []*internal.Selection {
+	var sels []*internal.Selection
 	for _, s := range selections {
-		sels = append(sels, &system.Selection{
+		sels = append(sels, &internal.Selection{
 			Name:         s.GetName(),
 			Alias:        s.GetAlias(),
 			Args:         convertAnyToInterface(s.GetArgs()),
@@ -194,7 +194,7 @@ func convertSelections(selections []*Selection) []*system.Selection {
 	return sels
 }
 
-func convertToDirectives(directives []*system.Directive) []*Directive {
+func convertToDirectives(directives []*internal.Directive) []*Directive {
 	var dirs []*Directive
 	for _, d := range directives {
 		argVals, _ := json.Marshal(d.ArgVals)
@@ -207,10 +207,10 @@ func convertToDirectives(directives []*system.Directive) []*Directive {
 	return dirs
 }
 
-func convertDirectives(directives []*Directive) []*system.Directive {
-	var dirs []*system.Directive
+func convertDirectives(directives []*Directive) []*internal.Directive {
+	var dirs []*internal.Directive
 	for _, d := range directives {
-		dirs = append(dirs, &system.Directive{
+		dirs = append(dirs, &internal.Directive{
 			Name:    d.GetName(),
 			ArgVals: convertAnyToInterface(d.GetArgVals()).(map[string]interface{}),
 			Loc:     convertLoc(d.GetLoc()),
@@ -221,7 +221,7 @@ func convertDirectives(directives []*Directive) []*system.Directive {
 
 func convertAnyToInterface(any *any.Any) interface{} {
 	dest := make(map[string]interface{})
-	json.Unmarshal(any.GetValue(), dest)
+	json.Unmarshal(any.GetValue(), &dest)
 	return dest
 }
 

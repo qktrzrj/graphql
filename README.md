@@ -109,6 +109,33 @@ func main() {
 
 In this example, we registered the Person object, enum and operation. For fields that only need to get field values from the source struct, we don't need to register with FieldFunc separately, graphql will extract this field value from the source and return it. For fields that do not exist in the struct, they must be registered with FieldFunc.
 
+# Enum Type
+
+```go
+type EnumType int
+
+const (
+    one EnumType = iota
+    two
+    three
+) 
+
+schema.Enum("EnumName",EnumType(0),map[string]interface{}{
+    "One":DescField{one,"one of enumType"},
+    "Two":tow,
+    "Three":three,
+})
+```
+in this case, we use usually method in go to defined enum type, and given value with iota.
+Enum function receive name,type and value map to build a Enum type in GraphQL. 
+for describe enum value, we defined a DescField which can provide description fro enum value.
+
+# Object Type
+
+```go
+
+```
+
 # Scalar Type
 
 ```go

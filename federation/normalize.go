@@ -2,7 +2,7 @@ package federation
 
 import (
 	"fmt"
-	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/internal"
 	"reflect"
 	"sort"
 )
@@ -11,19 +11,19 @@ import (
 // map from type to name.
 //
 // TODO: Stick this in an internal package.
-func CollectTypes(typ system.Type, types map[system.Type]string) error {
+func CollectTypes(typ internal.Type, types map[internal.Type]string) error {
 	if _, ok := types[typ]; ok {
 		return nil
 	}
 
 	switch typ := typ.(type) {
-	case *system.NonNull:
+	case *internal.NonNull:
 		CollectTypes(typ.Type, types)
 
-	case *system.List:
+	case *internal.List:
 		CollectTypes(typ.Type, types)
 
-	case *system.Object:
+	case *internal.Object:
 		types[typ] = typ.Name
 
 		for _, field := range typ.Fields {
@@ -34,18 +34,18 @@ func CollectTypes(typ system.Type, types map[system.Type]string) error {
 			CollectTypes(iface, types)
 		}
 
-	case *system.Union:
+	case *internal.Union:
 		types[typ] = typ.Name
 		for _, obj := range typ.Types {
 			CollectTypes(obj, types)
 		}
 
-	case *system.Enum:
+	case *internal.Enum:
 		types[typ] = typ.Name
 
-	case *system.Scalar:
+	case *internal.Scalar:
 		types[typ] = typ.Name
-	case *system.Interface:
+	case *internal.Interface:
 		types[typ] = typ.Name
 		for _, field := range typ.Fields {
 			CollectTypes(field.Type, types)
@@ -64,8 +64,8 @@ func CollectTypes(typ system.Type, types map[system.Type]string) error {
 	return nil
 }
 
-func makeTypeNameMap(schema *system.Schema) (map[string]system.Type, error) {
-	allTypes := make(map[system.Type]string)
+func makeTypeNameMap(schema *internal.Schema) (map[string]internal.Type, error) {
+	allTypes := make(map[internal.Type]string)
 	if err := CollectTypes(schema.Query, allTypes); err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func makeTypeNameMap(schema *system.Schema) (map[string]system.Type, error) {
 		return nil, err
 	}
 
-	reversedTypes := make(map[string]system.Type)
+	reversedTypes := make(map[string]internal.Type)
 	for typ, name := range allTypes {
 		reversedTypes[name] = typ
 	}
@@ -91,11 +91,11 @@ func makeTypeNameMap(schema *system.Schema) (map[string]system.Type, error) {
 type flattener struct {
 	// types is a map from all type names to the actual type, used to check if a
 	// fragment matches an object type.
-	types map[string]system.Type
+	types map[string]internal.Type
 }
 
 // newFlattener creates a new flattener.
-func newFlattener(schema *system.Schema) (*flattener, error) {
+func newFlattener(schema *internal.Schema) (*flattener, error) {
 	types, err := makeTypeNameMap(schema)
 	if err != nil {
 		return nil, err
@@ -106,12 +106,12 @@ func newFlattener(schema *system.Schema) (*flattener, error) {
 }
 
 // applies checks if obj matches fragment.
-func (f *flattener) applies(obj *system.Object, fragment *system.FragmentSpread) (bool, error) {
+func (f *flattener) applies(obj *internal.Object, fragment *internal.FragmentSpread) (bool, error) {
 	switch typ := f.types[fragment.Fragment.On].(type) {
-	case *system.Object:
+	case *internal.Object:
 		// An object matches if the name matches.
 		return typ.Name == obj.Name, nil
-	case *system.Union:
+	case *internal.Union:
 		// A union matches if the object is part of the union.
 		_, ok := typ.Types[obj.Name]
 		return ok, nil
@@ -123,7 +123,7 @@ func (f *flattener) applies(obj *system.Object, fragment *system.FragmentSpread)
 // flattenFragments flattens all fragments at the current level. It inlines the
 // selections of each fragment, but does not descend down recursively into those
 // selections.
-func (f *flattener) flattenFragments(selectionSet *system.SelectionSet, typ *system.Object, target *[]*system.Selection) error {
+func (f *flattener) flattenFragments(selectionSet *internal.SelectionSet, typ *internal.Object, target *[]*internal.Selection) error {
 	// Start with the non-fragment selections.
 	*target = append(*target, selectionSet.Selections...)
 
@@ -145,13 +145,13 @@ func (f *flattener) flattenFragments(selectionSet *system.SelectionSet, typ *sys
 
 // mergeSameAlias combines selections with same alias, verifying their
 // arguments and field are identical.
-func mergeSameAlias(selections []*system.Selection) ([]*system.Selection, error) {
+func mergeSameAlias(selections []*internal.Selection) ([]*internal.Selection, error) {
 	sort.Slice(selections, func(i, j int) bool {
 		return selections[i].Alias < selections[j].Alias
 	})
 
 	newSelections := selections[:0]
-	var last *system.Selection
+	var last *internal.Selection
 	for _, selection := range selections {
 		if last == nil || selection.Alias != last.Alias {
 			// Make a copy of the selection so we can modify it below
@@ -187,22 +187,22 @@ func mergeSameAlias(selections []*system.Selection) ([]*system.Selection, error)
 }
 
 // flatten recursively normalizes a query.
-func (f *flattener) flatten(selectionSet *system.SelectionSet, typ system.Type) (*system.SelectionSet, error) {
+func (f *flattener) flatten(selectionSet *internal.SelectionSet, typ internal.Type) (*internal.SelectionSet, error) {
 	switch typ := typ.(type) {
 	// For non-null and list types, flatten using the inner type.
-	case *system.NonNull:
+	case *internal.NonNull:
 		return f.flatten(selectionSet, typ.Type)
-	case *system.List:
+	case *internal.List:
 		return f.flatten(selectionSet, typ.Type)
 
-	case *system.Enum, *system.Scalar:
+	case *internal.Enum, *internal.Scalar:
 		// For enum and scalar types, check that there is no selection set.
 		if selectionSet != nil {
 			return nil, fmt.Errorf("unexpected selection on enum or scalar")
 		}
 		return selectionSet, nil
 
-	case *system.Object:
+	case *internal.Object:
 		if selectionSet == nil {
 			return nil, fmt.Errorf("object %s needs selection set", typ.Name)
 		}
@@ -215,7 +215,7 @@ func (f *flattener) flatten(selectionSet *system.SelectionSet, typ system.Type) 
 
 		// Collect all selections on this object and merge selections
 		// with the same alias.
-		selections := make([]*system.Selection, 0, len(selectionSet.Selections))
+		selections := make([]*internal.Selection, 0, len(selectionSet.Selections))
 		if err := f.flattenFragments(selectionSet, typ, &selections); err != nil {
 			return nil, err
 		}
@@ -227,9 +227,9 @@ func (f *flattener) flatten(selectionSet *system.SelectionSet, typ system.Type) 
 		// Recursively flatten.
 		for _, selection := range selections {
 			// Get the type of the field.
-			var fieldTyp system.Type
+			var fieldTyp internal.Type
 			if selection.Name == "__typename" {
-				fieldTyp = &system.Scalar{Name: "string"}
+				fieldTyp = &internal.Scalar{Name: "string"}
 			} else {
 				field, ok := typ.Fields[selection.Name]
 				if !ok {
@@ -245,17 +245,17 @@ func (f *flattener) flatten(selectionSet *system.SelectionSet, typ system.Type) 
 			selection.SelectionSet = selectionSet
 		}
 
-		return &system.SelectionSet{
+		return &internal.SelectionSet{
 			Selections: selections,
 		}, nil
 
-	case *system.Union:
+	case *internal.Union:
 		// To normalize a union query, consider all possible union types and
 		// build an inline fragment for each them by recursively normalize the
 		// query for the concrete object types.
 
 		// Create a fragment for every possible type.
-		fragments := make([]*system.FragmentSpread, 0, len(typ.Types))
+		fragments := make([]*internal.FragmentSpread, 0, len(typ.Types))
 		for _, obj := range typ.Types {
 			plan, err := f.flatten(selectionSet, obj)
 			if err != nil {
@@ -265,8 +265,8 @@ func (f *flattener) flatten(selectionSet *system.SelectionSet, typ system.Type) 
 			// Don't bother if there are no selections. There will be no
 			// fragments.
 			if len(plan.Selections) > 0 {
-				fragments = append(fragments, &system.FragmentSpread{
-					Fragment: &system.FragmentDefinition{
+				fragments = append(fragments, &internal.FragmentSpread{
+					Fragment: &internal.FragmentDefinition{
 						On:           obj.Name,
 						SelectionSet: plan,
 					},
@@ -279,7 +279,7 @@ func (f *flattener) flatten(selectionSet *system.SelectionSet, typ system.Type) 
 			return fragments[a].Fragment.On < fragments[b].Fragment.On
 		})
 
-		return &system.SelectionSet{
+		return &internal.SelectionSet{
 			Fragments: fragments,
 		}, nil
 

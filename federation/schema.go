@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/internal"
 	"sort"
 )
 
@@ -25,9 +25,9 @@ type FieldInfo struct {
 // SchemaWithFederationInfo holds a system.Schema along with
 // federtion-specific annotations per field.
 type SchemaWithFederationInfo struct {
-	Schema *system.Schema
+	Schema *internal.Schema
 	// Fields is a map of fields to services which they belong to
-	Fields map[*system.Field]*FieldInfo
+	Fields map[*internal.Field]*FieldInfo
 }
 
 func ConvertSchema(schemas map[string]string) (*SchemaWithFederationInfo, error) {
@@ -104,11 +104,11 @@ func convertVersionedSchemas(schemas serviceSchemas) (*SchemaWithFederationInfo,
 		return nil, err
 	}
 
-	fieldInfos := make(map[*system.Field]*FieldInfo)
+	fieldInfos := make(map[*internal.Field]*FieldInfo)
 	for _, service := range serviceNames {
 		for _, typ := range serviceSchemasByName[service].Schema.Types {
 			if typ.Kind == "OBJECT" {
-				obj := schema.TypeMap[typ.Name].(*system.Object)
+				obj := schema.TypeMap[typ.Name].(*internal.Object)
 
 				for _, field := range typ.Fields {
 					f := obj.Fields[field.Name]
@@ -133,7 +133,7 @@ func convertVersionedSchemas(schemas serviceSchemas) (*SchemaWithFederationInfo,
 }
 
 // lookupTypeRef maps the a introspected type to a graphql type
-func lookupType(t *introspectionTypeRef, all map[string]system.NamedType) (*introspectionTypeRef, error) {
+func lookupType(t *introspectionTypeRef, all map[string]internal.NamedType) (*introspectionTypeRef, error) {
 	if t == nil {
 		return nil, errors.New("malformed typeref")
 	}
@@ -150,7 +150,7 @@ func lookupType(t *introspectionTypeRef, all map[string]system.NamedType) (*intr
 }
 
 // lookupTypeRef maps the a introspected type to a graphql type
-func lookupTypeRef(t *introspectionTypeRef, all map[string]system.NamedType) (system.Type, error) {
+func lookupTypeRef(t *introspectionTypeRef, all map[string]internal.NamedType) (internal.Type, error) {
 	if t == nil {
 		return nil, errors.New("malformed typeref")
 	}
@@ -169,7 +169,7 @@ func lookupTypeRef(t *introspectionTypeRef, all map[string]system.NamedType) (sy
 		if err != nil {
 			return nil, err
 		}
-		return &system.List{
+		return &internal.List{
 			Type: inner,
 		}, nil
 
@@ -178,7 +178,7 @@ func lookupTypeRef(t *introspectionTypeRef, all map[string]system.NamedType) (sy
 		if err != nil {
 			return nil, err
 		}
-		return &system.NonNull{
+		return &internal.NonNull{
 			Type: inner,
 		}, nil
 
@@ -188,8 +188,8 @@ func lookupTypeRef(t *introspectionTypeRef, all map[string]system.NamedType) (sy
 }
 
 // parseInputFields maps a list of input types to a list of graphql types
-func parseInputFields(source []introspectionInputField, all map[string]system.NamedType) (map[string]*system.InputField, error) {
-	fields := make(map[string]*system.InputField)
+func parseInputFields(source []introspectionInputField, all map[string]internal.NamedType) (map[string]*internal.InputField, error) {
+	fields := make(map[string]*internal.InputField)
 
 	for _, field := range source {
 		// Validate the inputType is valid
@@ -207,7 +207,7 @@ func parseInputFields(source []introspectionInputField, all map[string]system.Na
 		if err != nil {
 			return nil, fmt.Errorf("field %s has bad typ: %v", field.Name, err)
 		}
-		fields[field.Name] = &system.InputField{
+		fields[field.Name] = &internal.InputField{
 			Name: field.Name,
 			Type: inputType,
 			Desc: field.Name,
@@ -219,8 +219,8 @@ func parseInputFields(source []introspectionInputField, all map[string]system.Na
 
 // parseSchema takes the introspected schema, validates the types,
 // and maps every field to the graphql types
-func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
-	all := make(map[string]system.NamedType)
+func parseSchema(schema *introspectionQueryResult) (*internal.Schema, error) {
+	all := make(map[string]internal.NamedType)
 
 	for _, typ := range schema.Schema.Types {
 		if _, ok := all[typ.Name]; ok {
@@ -229,37 +229,37 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 
 		switch typ.Kind {
 		case "OBJECT":
-			all[typ.Name] = &system.Object{
+			all[typ.Name] = &internal.Object{
 				Name: typ.Name,
 				Desc: typ.Desc,
 			}
 
 		case "INPUT_OBJECT":
-			all[typ.Name] = &system.InputObject{
+			all[typ.Name] = &internal.InputObject{
 				Name: typ.Name,
 				Desc: typ.Desc,
 			}
 
 		case "SCALAR":
-			all[typ.Name] = &system.Scalar{
+			all[typ.Name] = &internal.Scalar{
 				Name: typ.Name,
 				Desc: typ.Desc,
 			}
 
 		case "UNION":
-			all[typ.Name] = &system.Union{
+			all[typ.Name] = &internal.Union{
 				Name: typ.Name,
 				Desc: typ.Desc,
 			}
 
 		case "ENUM":
-			all[typ.Name] = &system.Enum{
+			all[typ.Name] = &internal.Enum{
 				Name: typ.Name,
 				Desc: typ.Desc,
 			}
 
 		case "INTERFACE":
-			all[typ.Name] = &system.Interface{
+			all[typ.Name] = &internal.Interface{
 				Name: typ.Name,
 				Desc: typ.Desc,
 			}
@@ -273,7 +273,7 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 	for _, typ := range schema.Schema.Types {
 		switch typ.Kind {
 		case "OBJECT":
-			fields := make(map[string]*system.Field)
+			fields := make(map[string]*internal.Field)
 			for _, field := range typ.Fields {
 				fieldTyp, err := lookupTypeRef(field.Type, all)
 				if err != nil {
@@ -286,7 +286,7 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 					return nil, fmt.Errorf("field %s input: %v", field.Name, err)
 				}
 
-				fields[field.Name] = &system.Field{
+				fields[field.Name] = &internal.Field{
 					Name: field.Name,
 					Desc: field.Desc,
 					Args: parsed,
@@ -294,21 +294,21 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 				}
 			}
 
-			interfaces := make(map[string]*system.Interface)
+			interfaces := make(map[string]*internal.Interface)
 			for _, iface := range typ.Interfaces {
 				if iface.Kind != "INTERFACE" {
 					return nil, fmt.Errorf("typ %s has interface typ not INTERFACE: %v", typ.Name, iface)
 				}
-				typ, ok := all[iface.Name].(*system.Interface)
+				typ, ok := all[iface.Name].(*internal.Interface)
 				if !ok {
 					return nil, fmt.Errorf("typ %s interface typ %s does not refer to interface", typ.Name, iface.Name)
 				}
 				interfaces[typ.Name] = typ
 			}
-			all[typ.Name].(*system.Object).Fields = fields
-			all[typ.Name].(*system.Object).Interfaces = interfaces
+			all[typ.Name].(*internal.Object).Fields = fields
+			all[typ.Name].(*internal.Object).Interfaces = interfaces
 		case "INTERFACE":
-			fields := make(map[string]*system.Field)
+			fields := make(map[string]*internal.Field)
 			for _, field := range typ.Fields {
 				fieldTyp, err := lookupTypeRef(field.Type, all)
 				if err != nil {
@@ -321,7 +321,7 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 					return nil, fmt.Errorf("field %s input: %v", field.Name, err)
 				}
 
-				fields[field.Name] = &system.Field{
+				fields[field.Name] = &internal.Field{
 					Name: field.Name,
 					Desc: field.Desc,
 					Args: parsed,
@@ -329,54 +329,54 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 				}
 			}
 
-			interfaces := make(map[string]*system.Interface)
+			interfaces := make(map[string]*internal.Interface)
 			for _, iface := range typ.Interfaces {
 				if iface.Kind != "INTERFACE" {
 					return nil, fmt.Errorf("typ %s has interface typ not INTERFACE: %v", typ.Name, iface)
 				}
-				typ, ok := all[iface.Name].(*system.Interface)
+				typ, ok := all[iface.Name].(*internal.Interface)
 				if !ok {
 					return nil, fmt.Errorf("typ %s interface typ %s does not refer to interface", typ.Name, iface.Name)
 				}
 				interfaces[typ.Name] = typ
 			}
-			types := make(map[string]*system.Object)
+			types := make(map[string]*internal.Object)
 			for _, other := range typ.PossibleTypes {
 				if other.Kind != "OBJECT" {
 					return nil, fmt.Errorf("typ %s has possible typ not OBJECT: %v", typ.Name, other)
 				}
-				typ, ok := all[other.Name].(*system.Object)
+				typ, ok := all[other.Name].(*internal.Object)
 				if !ok {
 					return nil, fmt.Errorf("typ %s possible typ %s does not refer to obj", typ.Name, other.Name)
 				}
 				types[typ.Name] = typ
 			}
 
-			all[typ.Name].(*system.Interface).Fields = fields
-			all[typ.Name].(*system.Interface).Interfaces = interfaces
-			all[typ.Name].(*system.Interface).PossibleTypes = types
+			all[typ.Name].(*internal.Interface).Fields = fields
+			all[typ.Name].(*internal.Interface).Interfaces = interfaces
+			all[typ.Name].(*internal.Interface).PossibleTypes = types
 		case "INPUT_OBJECT":
 			parsed, err := parseInputFields(typ.InputFields, all)
 			if err != nil {
 				return nil, fmt.Errorf("typ %s: %v", typ.Name, err)
 			}
 
-			all[typ.Name].(*system.InputObject).Fields = parsed
+			all[typ.Name].(*internal.InputObject).Fields = parsed
 
 		case "UNION":
-			types := make(map[string]*system.Object)
+			types := make(map[string]*internal.Object)
 			for _, other := range typ.PossibleTypes {
 				if other.Kind != "OBJECT" {
 					return nil, fmt.Errorf("typ %s has possible typ not OBJECT: %v", typ.Name, other)
 				}
-				typ, ok := all[other.Name].(*system.Object)
+				typ, ok := all[other.Name].(*internal.Object)
 				if !ok {
 					return nil, fmt.Errorf("typ %s possible typ %s does not refer to obj", typ.Name, other.Name)
 				}
 				types[typ.Name] = typ
 			}
 
-			all[typ.Name].(*system.Union).Types = types
+			all[typ.Name].(*internal.Union).Types = types
 
 		case "ENUM":
 			// XXX: introspection relies on the EnumValues map.
@@ -387,7 +387,7 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 				reverseMap[value.Name] = value.Name
 			}
 
-			enum := all[typ.Name].(*system.Enum)
+			enum := all[typ.Name].(*internal.Enum)
 			enum.Values = values
 			enum.Map = reverseMap
 
@@ -399,7 +399,7 @@ func parseSchema(schema *introspectionQueryResult) (*system.Schema, error) {
 		}
 	}
 
-	return &system.Schema{
+	return &internal.Schema{
 		TypeMap:  all,
 		Query:    all["Query"],
 		Mutation: all["Mutation"],

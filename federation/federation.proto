@@ -10,6 +10,14 @@ option go_package = "federation";
 service FederationService {
     rpc Execute (FederationRequest) returns (FederationResponse) {
     }
+    rpc Introspection (Null) returns (FederationResponse) {
+    }
+    rpc Subscription (FederationRequest) returns (stream FederationResponse) {
+    }
+}
+
+message Null {
+
 }
 
 message FederationRequest {

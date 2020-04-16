@@ -57,3 +57,9 @@ func New(format string, arg ...interface{}) *GraphQLError {
 		Message: fmt.Sprintf(format, arg...),
 	}
 }
+
+func News(format string, arg ...interface{}) MultiError {
+	return []*GraphQLError{{
+		Message: fmt.Sprintf(format, arg...),
+	}}
+}

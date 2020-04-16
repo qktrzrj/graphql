@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/shyptr/graphql/system"
-	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/ast"
+	"github.com/shyptr/graphql/internal"
 	"math"
 	"reflect"
 	"time"
@@ -39,7 +39,7 @@ type afterBuildFunc func(param buildParam) error
 
 type buildParam struct {
 	sb        *schemaBuilder
-	f         *system.Field
+	f         *internal.Field
 	functx    *funcContext
 	fnresolve *fieldResolve
 }
@@ -77,7 +77,7 @@ func (a afterExecuteFunc) execute(arg interface{}) (interface{}, error) {
 }
 
 var NonNullField afterBuildFunc = func(param buildParam) error {
-	param.f.Type = &system.NonNull{Type: param.f.Type}
+	param.f.Type = &internal.NonNull{Type: param.f.Type}
 	return nil
 }
 
@@ -123,7 +123,7 @@ type Scalar struct {
 type Directive struct {
 	Name   string
 	Desc   string
-	Type   interface{}
+	Fn     interface{}
 	Locs   []string
 	Fields map[string]*inputFieldResolve
 }
@@ -745,10 +745,18 @@ type skipArg struct {
 	If bool `graphql:"if;Skipped when true."`
 }
 
+type DirectiveFn func() (interface{}, error)
+
 var IncludeDirective = &Directive{
 	Name: "include",
 	Desc: "Directs the executor to include this field or fragment only when the `if` argument is true.",
-	Type: includeArg{},
+	Fn: func(ctx context.Context, args includeArg, fn DirectiveFn) (bool, interface{}, error) {
+		if args.If {
+			i, err := fn()
+			return false, i, err
+		}
+		return true, nil, nil
+	},
 	Locs: []string{
 		"FIELD",
 		"FRAGMENT_SPREAD",
@@ -759,7 +767,13 @@ var IncludeDirective = &Directive{
 var SkipDirective = &Directive{
 	Name: "skip",
 	Desc: "Directs the executor to skip this field or fragment when the `if` argument is true.",
-	Type: skipArg{},
+	Fn: func(ctx context.Context, args includeArg, fn DirectiveFn) (bool, interface{}, error) {
+		if args.If {
+			return false, nil, nil
+		}
+		i, err := fn()
+		return true, i, err
+	},
 	Locs: []string{
 		"FIELD",
 		"FRAGMENT_SPREAD",

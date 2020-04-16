@@ -6,10 +6,9 @@ import (
 	"errors"
 	"fmt"
 	errors2 "github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/execution"
+	"github.com/shyptr/graphql/internal"
 	"github.com/shyptr/graphql/schemabuilder"
-	"github.com/shyptr/graphql/system"
-	"github.com/shyptr/graphql/system/execution"
-	"github.com/shyptr/graphql/system/validation"
 	"log"
 	"net/http"
 	"strings"
@@ -20,7 +19,7 @@ import (
 )
 
 // HTTPSubHandler implements the handler required for executing the graphql subscriptions
-func HTTPSubHandler(schema *system.Schema, s *pubsub.Subscription) (http.Handler, func()) {
+func HTTPSubHandler(schema *internal.Schema, s *pubsub.Subscription) (http.Handler, func()) {
 	source := make(chan *event)
 	sessions := &sessions{
 		data:  map[string][]chan *event{},
@@ -165,7 +164,7 @@ loop:
 				fmt.Println(err)
 				return
 			}
-			query, err := system.Parse(gql.Query)
+			query, err := internal.Parse(gql.Query)
 			if err != nil {
 				if er := writeResponse(conn, "error", data.Id, nil, err); er != nil {
 					fmt.Println(err)
@@ -175,15 +174,15 @@ loop:
 				return
 			}
 			schema := h.Schema.Subscription
-			if err := validation.Validate(h.Schema, query, gql.Variables, 50); err != nil {
-				if er := writeResponse(conn, "error", data.Id, nil, err); er != nil {
-					fmt.Println(er)
-					return
-				}
-				fmt.Println(err)
-				return
-			}
-			_, selectionSet, err := execution.ApplySelectionSet(query, "subscription", gql.Variables)
+			//if err := validation.Validate(h.Schema, query, gql.Variables, 50); err != nil {
+			//	if er := writeResponse(conn, "error", data.Id, nil, err); er != nil {
+			//		fmt.Println(er)
+			//		return
+			//	}
+			//	fmt.Println(err)
+			//	return
+			//}
+			_, selectionSet, err := execution.ApplySelectionSet(h.Schema, query, "subscription", gql.Variables)
 			if err != nil {
 				if er := writeResponse(conn, "error", data.Id, nil, err); er != nil {
 					fmt.Println(er)
@@ -194,11 +193,11 @@ loop:
 			}
 			for _, v := range selectionSet.Selections {
 				end := make(chan struct{}, 1)
-				modQuery := &system.SelectionSet{
-					Selections: []*system.Selection{v},
+				modQuery := &internal.SelectionSet{
+					Selections: []*internal.Selection{v},
 					Fragments:  selectionSet.Fragments,
 				}
-				go func(conn *webConn, data *wsMessage, schema system.Type, query *system.SelectionSet, end chan struct{}, w http.ResponseWriter, r *http.Request) {
+				go func(conn *webConn, data *wsMessage, schema internal.Type, query *internal.SelectionSet, end chan struct{}, w http.ResponseWriter, r *http.Request) {
 					if err := h.serveHTTP(conn, *data, schema, query, end, w, r); err != nil {
 						fmt.Println("Id:", data.Id, ": terminated: ", err)
 					}
@@ -281,7 +280,7 @@ func writeResponse(w *webConn, typ, id string, r interface{}, er error) error {
 	return nil
 }
 
-func (h *httpSubHandler) serveHTTP(conn *webConn, data wsMessage, schema system.Type, query *system.SelectionSet, end chan struct{}, w http.ResponseWriter, r *http.Request) error {
+func (h *httpSubHandler) serveHTTP(conn *webConn, data wsMessage, schema internal.Type, query *internal.SelectionSet, end chan struct{}, w http.ResponseWriter, r *http.Request) error {
 	sid := data.Id
 	sess := make(chan *event)
 	h.sessions.Lock()

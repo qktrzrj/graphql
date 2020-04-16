@@ -3,10 +3,9 @@ package federation
 import (
 	"errors"
 	"fmt"
-	"github.com/shyptr/graphql/system"
-	"github.com/shyptr/graphql/system/ast"
-	"github.com/shyptr/graphql/system/execution"
-	"github.com/shyptr/graphql/system/validation"
+	"github.com/shyptr/graphql/ast"
+	"github.com/shyptr/graphql/execution"
+	"github.com/shyptr/graphql/internal"
 	"sort"
 )
 
@@ -44,12 +43,12 @@ type PathStep struct {
 
 // Plan breaks the query down into subqueries that can be resolved by a single graphql server
 type Plan struct {
-	Path         []PathStep           // Pathstep defines what the steps this subplan is nested on
-	Service      string               // Service that resolves this path step
-	Kind         string               // Kind is either a query or mutation
-	Type         string               // Type is the name of the object type each subplan is nested on
-	SelectionSet *system.SelectionSet // Selections that will be resolved in this part of the plan
-	After        []*Plan              // Subplans from nested queries on this path
+	Path         []PathStep             // Pathstep defines what the steps this subplan is nested on
+	Service      string                 // Service that resolves this path step
+	Kind         string                 // Kind is either a query or mutation
+	Type         string                 // Fn is the name of the object type each subplan is nested on
+	SelectionSet *internal.SelectionSet // Selections that will be resolved in this part of the plan
+	After        []*Plan                // Subplans from nested queries on this path
 }
 
 // Planner is responsible for taking a query created a plan that will be used by the executor.
@@ -99,7 +98,7 @@ func printPlan(rootPlan *Plan) {
 	}
 }
 
-func printSelections(selectionSet *system.SelectionSet) {
+func printSelections(selectionSet *internal.SelectionSet) {
 	if selectionSet != nil {
 		fmt.Println(" selections")
 		for _, subSelection := range selectionSet.Selections {
@@ -116,17 +115,17 @@ func printSelections(selectionSet *system.SelectionSet) {
 	}
 }
 
-func (e *Planner) planObject(typ *system.Object, selectionSet *system.SelectionSet, service string) (*Plan, error) {
+func (e *Planner) planObject(typ *internal.Object, selectionSet *internal.SelectionSet, service string) (*Plan, error) {
 	p := &Plan{
 		Type:         typ.Name,
 		Service:      service,
-		SelectionSet: &system.SelectionSet{},
+		SelectionSet: &internal.SelectionSet{},
 		After:        nil,
 		Kind:         string(ast.Query),
 	}
 
-	var localSelections []*system.Selection
-	selectionsByService := make(map[string][]*system.Selection)
+	var localSelections []*internal.Selection
+	selectionsByService := make(map[string][]*internal.Selection)
 
 	// Flattened queries should not have any fragments
 	if len(selectionSet.Fragments) > 0 {
@@ -176,7 +175,7 @@ func (e *Planner) planObject(typ *system.Object, selectionSet *system.SelectionS
 			}
 		}
 
-		selectionCopy := &system.Selection{
+		selectionCopy := &internal.Selection{
 			Alias: selection.Alias,
 			Name:  selection.Name,
 			Args:  selection.Args,
@@ -211,7 +210,7 @@ func (e *Planner) planObject(typ *system.Object, selectionSet *system.SelectionS
 		selections := selectionsByService[other]
 		needKey = true
 
-		subPlan, err := e.plan(typ, &system.SelectionSet{Selections: selections}, other)
+		subPlan, err := e.plan(typ, &internal.SelectionSet{Selections: selections}, other)
 		if err != nil {
 			return nil, fmt.Errorf("planning for %s: %v", other, err)
 		}
@@ -231,7 +230,7 @@ func (e *Planner) planObject(typ *system.Object, selectionSet *system.SelectionS
 			}
 		}
 		if !hasKey {
-			p.SelectionSet.Selections = append(p.SelectionSet.Selections, &system.Selection{
+			p.SelectionSet.Selections = append(p.SelectionSet.Selections, &internal.Selection{
 				Name:  "__federation",
 				Alias: "__federation",
 				Args:  map[string]interface{}{},
@@ -243,13 +242,13 @@ func (e *Planner) planObject(typ *system.Object, selectionSet *system.SelectionS
 
 }
 
-func (e *Planner) planUnion(typ *system.Union, selectionSet *system.SelectionSet, service string) (*Plan, error) {
+func (e *Planner) planUnion(typ *internal.Union, selectionSet *internal.SelectionSet, service string) (*Plan, error) {
 	plan := &Plan{
 		// TODO: only include __typename if needed for dispatching? ie. len(types) > 1 and len(fragments) > 0?
 		// TODO: ensure __typename doesn't conflict with another field?
 
-		SelectionSet: &system.SelectionSet{
-			Selections: []*system.Selection{
+		SelectionSet: &internal.SelectionSet{
+			Selections: []*internal.Selection{
 				{
 					Name:  "__typename",
 					Alias: "__typename",
@@ -290,8 +289,8 @@ func (e *Planner) planUnion(typ *system.Union, selectionSet *system.SelectionSet
 		}
 
 		// Query the fields known to the current with a local fragment.
-		plan.SelectionSet.Fragments = append(plan.SelectionSet.Fragments, &system.FragmentSpread{
-			Fragment: &system.FragmentDefinition{
+		plan.SelectionSet.Fragments = append(plan.SelectionSet.Fragments, &internal.FragmentSpread{
+			Fragment: &internal.FragmentDefinition{
 				On:           typ.Name,
 				SelectionSet: concretePlan.SelectionSet,
 			},
@@ -307,13 +306,13 @@ func (e *Planner) planUnion(typ *system.Union, selectionSet *system.SelectionSet
 	return plan, nil
 }
 
-func (e *Planner) planInterface(typ *system.Interface, selectionSet *system.SelectionSet, service string) (*Plan, error) {
+func (e *Planner) planInterface(typ *internal.Interface, selectionSet *internal.SelectionSet, service string) (*Plan, error) {
 	plan := &Plan{
 		// TODO: only include __typename if needed for dispatching? ie. len(types) > 1 and len(fragments) > 0?
 		// TODO: ensure __typename doesn't conflict with another field?
 
-		SelectionSet: &system.SelectionSet{
-			Selections: []*system.Selection{
+		SelectionSet: &internal.SelectionSet{
+			Selections: []*internal.Selection{
 				{
 					Name:  "__typename",
 					Alias: "__typename",
@@ -354,8 +353,8 @@ func (e *Planner) planInterface(typ *system.Interface, selectionSet *system.Sele
 		}
 
 		// Query the fields known to the current with a local fragment.
-		plan.SelectionSet.Fragments = append(plan.SelectionSet.Fragments, &system.FragmentSpread{
-			Fragment: &system.FragmentDefinition{
+		plan.SelectionSet.Fragments = append(plan.SelectionSet.Fragments, &internal.FragmentSpread{
+			Fragment: &internal.FragmentDefinition{
 				On:           typ.Name,
 				SelectionSet: concretePlan.SelectionSet,
 			},
@@ -371,21 +370,21 @@ func (e *Planner) planInterface(typ *system.Interface, selectionSet *system.Sele
 	return plan, nil
 }
 
-func (e *Planner) plan(typIface system.Type, selectionSet *system.SelectionSet, service string) (*Plan, error) {
+func (e *Planner) plan(typIface internal.Type, selectionSet *internal.SelectionSet, service string) (*Plan, error) {
 	switch typ := typIface.(type) {
-	case *system.NonNull:
+	case *internal.NonNull:
 		return e.plan(typ.Type, selectionSet, service)
 
-	case *system.List:
+	case *internal.List:
 		return e.plan(typ.Type, selectionSet, service)
 
-	case *system.Object:
+	case *internal.Object:
 		return e.planObject(typ, selectionSet, service)
 
-	case *system.Union:
+	case *internal.Union:
 		return e.planUnion(typ, selectionSet, service)
 
-	case *system.Interface:
+	case *internal.Interface:
 		return e.planInterface(typ, selectionSet, service)
 
 	default:
@@ -406,8 +405,8 @@ func reversePaths(p *Plan) {
 	}
 }
 
-func (e *Planner) planRoot(op ast.OperationType, query *system.SelectionSet) (*Plan, error) {
-	var schema system.Type
+func (e *Planner) planRoot(op ast.OperationType, query *internal.SelectionSet) (*Plan, error) {
+	var schema internal.Type
 	switch op {
 	case ast.Query:
 		schema = e.schema.Schema.Query
@@ -455,17 +454,17 @@ func NewPlaner(schema *SchemaWithFederationInfo) (*Planner, error) {
 }
 
 func MustPlan(planner *Planner, param execution.Params) (*Plan, error) {
-	doc, err2 := system.Parse(param.Query)
-	if err2 != nil {
-		return nil, err2
+	doc, err := internal.Parse(param.Query)
+	if err != nil {
+		return nil, err
 	}
-	errs := validation.Validate(planner.schema.Schema, doc, param.Variables, 50)
-	if len(errs) > 0 {
-		return nil, errs
-	}
-	operationType, selectionSet, err2 := execution.ApplySelectionSet(doc, param.OperationName, param.Variables)
-	if err2 != nil {
-		return nil, err2
+	//errs := validation.Validate(planner.schema.Schema, doc, param.Variables, 50)
+	//if len(errs) > 0 {
+	//	return nil, errs
+	//}
+	operationType, selectionSet, err := execution.ApplySelectionSet(planner.schema.Schema, doc, param.OperationName, param.Variables)
+	if err != nil {
+		return nil, err
 	}
 	return planner.planRoot(operationType, selectionSet)
 }

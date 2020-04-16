@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/internal"
 	"reflect"
 )
 
@@ -55,7 +55,7 @@ func (p ConnectionArgs) limit() int {
 }
 
 // PaginationInfo can be returned in a PaginateFieldFunc. The TotalCount function returns the
-// totalCount field on the connection Type. If the resolver makes a SQL Query, then HasNextPage and
+// totalCount field on the connection Fn. If the resolver makes a SQL Query, then HasNextPage and
 // HasPrevPage can be resolved in an efficient manner by requesting first/last:n + 1 items in the
 // query. Then the flags can be filled in by checking the result size.
 type PaginationInfo struct {
@@ -113,9 +113,9 @@ var RelayConnection afterBuildFunc = func(param buildParam) error {
 		}
 	}
 
-	var connectionArgs *system.InputObject
+	var connectionArgs *internal.InputObject
 	if argAnonymous {
-		connectionArgs = field.Args[connectionArgsType.Elem().Name()].Type.(*system.InputObject)
+		connectionArgs = field.Args[connectionArgsType.Elem().Name()].Type.(*internal.InputObject)
 		delete(field.Args, connectionArgsType.Elem().Name())
 	} else {
 		fnresolve.handleChain = append(fnresolve.handleChain, relayParseArg(false))
@@ -124,27 +124,27 @@ var RelayConnection afterBuildFunc = func(param buildParam) error {
 		if err != nil {
 			return err
 		}
-		connectionArgs = argType.(*system.InputObject)
+		connectionArgs = argType.(*internal.InputObject)
 	}
 	for n, f := range connectionArgs.Fields {
 		field.Args[n] = f
 	}
 
-	var sliceType *system.List
+	var sliceType *internal.List
 	if retAnonymous {
-		retobj := field.Type.(*system.Object)
+		retobj := field.Type.(*internal.Object)
 		delete(retobj.Fields, paginationInfoType.Elem().Name())
 		for _, f := range retobj.Fields {
-			if _, ok := f.Type.(*system.List); !ok {
+			if _, ok := f.Type.(*internal.List); !ok {
 				return fmt.Errorf("for pagination reutrn,another field should be slice")
 			}
-			sliceType = f.Type.(*system.List)
+			sliceType = f.Type.(*internal.List)
 		}
 	} else {
-		if _, ok := field.Type.(*system.List); !ok {
+		if _, ok := field.Type.(*internal.List); !ok {
 			return fmt.Errorf("for pagination reutrn should be slice")
 		}
-		sliceType = field.Type.(*system.List)
+		sliceType = field.Type.(*internal.List)
 	}
 
 	if sliceType == nil {
@@ -163,21 +163,21 @@ var RelayConnection afterBuildFunc = func(param buildParam) error {
 	return buildConnectionType(object.Name, sb, sliceType, fctx, field)
 }
 
-func validateSliceType(typ system.Type) (*system.Object, error) {
+func validateSliceType(typ internal.Type) (*internal.Object, error) {
 	switch typ := typ.(type) {
-	case *system.List:
+	case *internal.List:
 		return validateSliceType(typ.Type)
-	case *system.NonNull:
+	case *internal.NonNull:
 		return validateSliceType(typ.Type)
-	case *system.Object:
+	case *internal.Object:
 		return typ, nil
 	default:
 		return nil, fmt.Errorf("relay slice elem must be object")
 	}
 }
 
-func buildConnectionType(name string, sb *schemaBuilder, sliceType *system.List, fctx *funcContext, field *system.Field) error {
-	fieldMap := make(map[string]*system.Field)
+func buildConnectionType(name string, sb *schemaBuilder, sliceType *internal.List, fctx *funcContext, field *internal.Field) error {
+	fieldMap := make(map[string]*internal.Field)
 
 	countType, _ := reflect.TypeOf(Connection{}).FieldByName("TotalCount")
 	countField, err := sb.buildField(countType)
@@ -185,7 +185,7 @@ func buildConnectionType(name string, sb *schemaBuilder, sliceType *system.List,
 		return err
 	}
 	fieldMap["totalCount"] = countField
-	nodeField := &system.Field{
+	nodeField := &internal.Field{
 		Name: "node",
 		Type: sliceType.Type,
 		Resolve: func(ctx context.Context, source, args interface{}) (interface{}, error) {
@@ -201,11 +201,11 @@ func buildConnectionType(name string, sb *schemaBuilder, sliceType *system.List,
 	if err != nil {
 		return err
 	}
-	fieldMap["edges"] = &system.Field{
+	fieldMap["edges"] = &internal.Field{
 		Name: "edges",
-		Type: &system.List{Type: &system.NonNull{Type: &system.Object{
+		Type: &internal.List{Type: &internal.NonNull{Type: &internal.Object{
 			Name: fmt.Sprintf("%sEdge", name),
-			Fields: map[string]*system.Field{
+			Fields: map[string]*internal.Field{
 				"node":   nodeField,
 				"cursor": cursorField,
 			},
@@ -225,7 +225,7 @@ func buildConnectionType(name string, sb *schemaBuilder, sliceType *system.List,
 		return err
 	}
 	fieldMap["pageInfo"] = pageInfoField
-	field.Type = &system.NonNull{Type: &system.Object{
+	field.Type = &internal.NonNull{Type: &internal.Object{
 		Name:     fmt.Sprintf("%sConnection", name),
 		Fields:   fieldMap,
 		IsTypeOf: reflect.New(fctx.typ).Interface(),

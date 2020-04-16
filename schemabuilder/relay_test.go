@@ -3,8 +3,8 @@ package schemabuilder_test
 import (
 	"fmt"
 	"github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/execution"
 	"github.com/shyptr/graphql/schemabuilder"
-	"github.com/shyptr/graphql/system/execution"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

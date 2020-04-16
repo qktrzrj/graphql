@@ -2,8 +2,8 @@ package main
 
 import (
 	"github.com/shyptr/graphql"
+	"github.com/shyptr/graphql/introspection"
 	"github.com/shyptr/graphql/schemabuilder"
-	"github.com/shyptr/graphql/system/introspection"
 	"net/http"
 )
 

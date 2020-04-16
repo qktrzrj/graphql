@@ -4,12 +4,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/shyptr/graphql/system"
-	"github.com/shyptr/graphql/system/ast"
+	"github.com/shyptr/graphql/ast"
+	"github.com/shyptr/graphql/internal"
 	"reflect"
 	"strconv"
 )
 
+// schema builder
+//
+// use to build go type into graphql type system
+// include:
+// 	struct->object/input
+// 	enum
+// 	interface
+//	scalar(int,float,string...eg.)
+// 	union struct
+// 	defined directive
 type Schema struct {
 	objects      map[string]*Object
 	enums        map[string]*Enum
@@ -38,12 +48,14 @@ func NewSchema() *Schema {
 	return schema
 }
 
+// only use in enum definition
+// can set description for enum value
+var DescFieldTyp = reflect.TypeOf(DescField{})
+
 type DescField struct {
 	Field interface{}
 	Desc  string
 }
-
-var DescFieldTyp = reflect.TypeOf(DescField{})
 
 // Enum registers an enumType in the schema. The val should be any arbitrary value
 // of the enumType to be used for reflection, and the enumMap should be
@@ -59,11 +71,11 @@ var DescFieldTyp = reflect.TypeOf(DescField{})
 //
 // Then the Enum can be registered as:
 //   s.Enum("number",enumType(1), map[string]interface{}{
-//     "one":   {enumType(1),"the first one"},
-//     "two":   enumType(2),
-//     "three": enumType(3),
+//     "one":   DescField{one,"the first one"},
+//     "two":   two,
+//     "three": three,
 //   },"")
-func (s *Schema) Enum(name string, val interface{}, enum interface{}, descs ...string) {
+func (s *Schema) Enum(name string, val interface{}, enum interface{}, desc ...string) {
 	if name == "" {
 		panic("enum must provide name")
 	}
@@ -105,13 +117,13 @@ func (s *Schema) Enum(name string, val interface{}, enum interface{}, descs ...s
 		rMap[valInterface] = key
 		dMap[key] = desc
 	}
-	var desc string
-	if len(descs) > 0 {
-		desc = descs[0]
+	var d string
+	if len(desc) > 0 {
+		d = desc[0]
 	}
 	s.enums[name] = &Enum{
 		Name:       name,
-		Desc:       desc,
+		Desc:       d,
 		Type:       val,
 		Map:        eMap,
 		ReverseMap: rMap,
@@ -123,7 +135,7 @@ func (s *Schema) Enum(name string, val interface{}, enum interface{}, descs ...s
 // We'll read the fields of the struct to determine it's basic "Fields" and
 // we'll return an Object struct that we can use to register custom
 // relationships and fields on the object.
-func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
+func (s *Schema) Object(name string, typ interface{}, desc ...string) *Object {
 	objTyp := reflect.TypeOf(typ)
 	if name == "" {
 		name = objTyp.Name()
@@ -136,13 +148,13 @@ func (s *Schema) Object(name string, typ interface{}, descs ...string) *Object {
 		}
 		return object
 	}
-	var desc string
-	if len(descs) > 0 {
-		desc = descs[0]
+	var d string
+	if len(desc) > 0 {
+		d = desc[0]
 	}
 	object := &Object{
 		Name:         name,
-		Desc:         desc,
+		Desc:         d,
 		Type:         typ,
 		FieldResolve: map[string]*fieldResolve{},
 		Interface:    []*Interface{},
@@ -356,7 +368,8 @@ func (s *Schema) Interface(name string, typ interface{}, typeResolve interface{}
 //
 // use as :
 // s.Directive("dir",[]string{"Field"},struct{ a scalar `graphql:"a,nonnull,is a"` },"testdir")
-func (s *Schema) Directive(name string, locs []string, args interface{}, desc string) {
+
+func (s *Schema) Directive(name string, locs []string, fn interface{}, desc ...string) {
 	// Ensure directive is named
 	if name == "" {
 		panic("Directive must be named.")
@@ -365,11 +378,18 @@ func (s *Schema) Directive(name string, locs []string, args interface{}, desc st
 	if len(locs) == 0 {
 		panic("Must provide locations for directive.")
 	}
+
+	if fn == nil {
+		panic("Must provide option func for directive")
+	}
+
 	s.directives[name] = &Directive{
 		Name: name,
-		Desc: desc,
-		Type: args,
+		Fn:   fn,
 		Locs: locs,
+	}
+	if len(desc) > 0 {
+		s.directives[name].Desc = desc[0]
 	}
 }
 
@@ -406,20 +426,31 @@ func (s *Schema) Subscription() *Object {
 // Build takes the schema we have built on our Query, Mutation and Subscription starting points and builds a full graphql.Schema
 // We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
-func (s *Schema) Build() (*system.Schema, error) {
+func (s *Schema) Build() (*internal.Schema, error) {
 	sb := &schemaBuilder{
-		types:        make(map[reflect.Type]system.Type),
-		cacheTypes:   make(map[reflect.Type]resolveFunc),
-		objects:      make(map[reflect.Type]*Object, len(s.objects)),
-		enums:        make(map[reflect.Type]*Enum, len(s.enums)),
-		inputObjects: make(map[reflect.Type]*InputObject, len(s.inputObjects)),
-		interfaces:   make(map[reflect.Type]*Interface, len(s.interfaces)),
-		scalars:      make(map[reflect.Type]*Scalar, len(s.scalars)),
-		unions:       make(map[reflect.Type]*Union, len(s.unions)),
+		types:      make(map[reflect.Type]internal.Type),
+		cacheTypes: make(map[reflect.Type]resolveFunc),
+		enums:      make(map[reflect.Type]*Enum, len(s.enums)),
+		interfaces: make(map[reflect.Type]*Interface, len(s.interfaces)),
+		scalars:    make(map[reflect.Type]*Scalar, len(s.scalars)),
+		unions:     make(map[reflect.Type]*Union, len(s.unions)),
+		objects: map[reflect.Type]*Object{
+			paginationInfoType.Elem(): {
+				Name: paginationInfoType.Name(),
+				Type: PaginationInfo{},
+			},
+			pageInfoType.Elem(): {
+				Name: "PageInfo",
+				Type: PageInfo{},
+			},
+		},
+		inputObjects: map[reflect.Type]*InputObject{
+			connectionArgsType.Elem(): {
+				Name: connectionArgsType.Name(),
+				Type: ConnectionArgs{},
+			},
+		},
 	}
-
-	directives := make(map[string]*system.Directive, len(s.directives))
-
 	for _, object := range s.objects {
 		typ := reflect.TypeOf(object.Type)
 		if typ.Kind() != reflect.Struct {
@@ -433,15 +464,6 @@ func (s *Schema) Build() (*system.Schema, error) {
 		sb.objects[typ] = object
 	}
 
-	sb.objects[paginationInfoType.Elem()] = &Object{
-		Name: paginationInfoType.Name(),
-		Type: PaginationInfo{},
-	}
-	sb.objects[pageInfoType.Elem()] = &Object{
-		Name: "PageInfo",
-		Type: PageInfo{},
-	}
-
 	for _, inputObject := range s.inputObjects {
 		typ := reflect.TypeOf(inputObject.Type)
 		if typ.Kind() != reflect.Struct {
@@ -453,11 +475,6 @@ func (s *Schema) Build() (*system.Schema, error) {
 		}
 
 		sb.inputObjects[typ] = inputObject
-	}
-
-	sb.inputObjects[connectionArgsType.Elem()] = &InputObject{
-		Name: connectionArgsType.Name(),
-		Type: ConnectionArgs{},
 	}
 
 	for _, enum := range s.enums {
@@ -522,34 +539,22 @@ func (s *Schema) Build() (*system.Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	typeMap := make(map[string]system.NamedType, len(sb.types))
+	directives := make(map[string]*internal.Directive, len(s.directives))
+	for name, dir := range s.directives {
+		directive, err := sb.getDirective(dir)
+		if err != nil {
+			return nil, err
+		}
+		directives[name] = directive
+	}
+
+	typeMap := make(map[string]internal.NamedType, len(sb.types))
 	for _, t := range sb.types {
-		if named, ok := t.(system.NamedType); ok {
+		if named, ok := t.(internal.NamedType); ok {
 			typeMap[named.TypeName()] = named
 		}
 	}
-	for name, dir := range s.directives {
-		var args []*system.InputField
-		if dir.Type != nil {
-			if a, err := sb.getArguments(reflect.TypeOf(dir.Type)); err == nil {
-				for _, arg := range a {
-					if f, ok := dir.Fields[arg.Name]; ok {
-						arg.DefaultValue = f.DefaultValue
-					}
-					args = append(args, arg)
-				}
-			} else {
-				return nil, err
-			}
-		}
-		directives[name] = &system.Directive{
-			Name: dir.Name,
-			Desc: dir.Desc,
-			Args: args,
-			Locs: dir.Locs,
-		}
-	}
-	return &system.Schema{
+	return &internal.Schema{
 		TypeMap:      typeMap,
 		Query:        queryTyp,
 		Mutation:     mutationTyp,
@@ -559,7 +564,7 @@ func (s *Schema) Build() (*system.Schema, error) {
 }
 
 //MustBuild builds a schema and panics if an error occurs.
-func (s *Schema) MustBuild() *system.Schema {
+func (s *Schema) MustBuild() *internal.Schema {
 	built, err := s.Build()
 	if err != nil {
 		panic(err)

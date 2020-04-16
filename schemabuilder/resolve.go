@@ -2,14 +2,14 @@ package schemabuilder
 
 import (
 	"fmt"
-	"github.com/shyptr/graphql/system"
+	"github.com/shyptr/graphql/internal"
 	"reflect"
 )
 
 type resolveFunc func(interface{}) (interface{}, error)
 
-func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*system.InputField, error) {
-	args := make(map[string]*system.InputField)
+func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*internal.InputField, error) {
+	args := make(map[string]*internal.InputField)
 	if typ.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("args %s must be struct", typ.String())
 	}
@@ -24,7 +24,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*system.Inpu
 			return nil, err
 		}
 		if nonnull {
-			fieldTyp = &system.NonNull{Type: fieldTyp}
+			fieldTyp = &internal.NonNull{Type: fieldTyp}
 		}
 		err = sb.getArgResolve(field.Type, fieldTyp)
 		if err != nil {
@@ -36,7 +36,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*system.Inpu
 				defaultValue = f.DefaultValue
 			}
 		}
-		args[name] = &system.InputField{
+		args[name] = &internal.InputField{
 			Name:         name,
 			Type:         fieldTyp,
 			Desc:         desc,
@@ -47,7 +47,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*system.Inpu
 	return args, nil
 }
 
-func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ system.Type) error {
+func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ internal.Type) error {
 	for src.Kind() == reflect.Ptr {
 		src = src.Elem()
 	}
@@ -55,7 +55,7 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ system.Type) error 
 		return nil
 	}
 	switch typ := typ.(type) {
-	case *system.Scalar:
+	case *internal.Scalar:
 		sb.cacheTypes[src] = func(value interface{}) (interface{}, error) {
 			if value == nil {
 				return nil, nil
@@ -63,7 +63,7 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ system.Type) error 
 			return typ.ParseValue(value)
 		}
 		return nil
-	case *system.Enum:
+	case *internal.Enum:
 		sb.cacheTypes[src] = func(value interface{}) (interface{}, error) {
 			if value == nil {
 				return nil, nil
@@ -74,7 +74,7 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ system.Type) error 
 			return typ.ReverseMap[value.(string)], nil
 		}
 		return nil
-	case *system.InputObject:
+	case *internal.InputObject:
 		sb.cacheTypes[src] = func(value interface{}) (interface{}, error) {
 			if value == nil {
 				return nil, nil
@@ -85,9 +85,9 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ system.Type) error 
 			return nil, nil
 		}
 		return nil
-	case *system.NonNull:
+	case *internal.NonNull:
 		return sb.getArgResolve(src, typ.Type)
-	case *system.List:
+	case *internal.List:
 		if err := sb.getArgResolve(src.Elem(), typ.Type); err != nil {
 			return err
 		}

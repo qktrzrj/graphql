@@ -3,8 +3,8 @@ package main
 import (
 	"errors"
 	"github.com/shyptr/graphql"
+	"github.com/shyptr/graphql/introspection"
 	"github.com/shyptr/graphql/schemabuilder"
-	"github.com/shyptr/graphql/system/introspection"
 	"log"
 	"net/http"
 	_ "net/http/pprof"
@@ -271,6 +271,11 @@ func RegisterSchema(schema *schemabuilder.Schema) {
 		}
 	}, "", schemabuilder.RelayConnection)
 
+	schema.Directive("direct", []string{string(introspection.Query)}, func(args struct {
+		If bool `graphql:"if;when true, get result form directive func"`
+	}) (interface{}, error) {
+		return "MyDirective", nil
+	})
 }
 
 func main() {

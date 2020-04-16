@@ -3,10 +3,10 @@ package federation_test
 import (
 	"errors"
 	errors2 "github.com/shyptr/graphql/errors"
+	"github.com/shyptr/graphql/execution"
 	"github.com/shyptr/graphql/federation"
+	"github.com/shyptr/graphql/introspection"
 	"github.com/shyptr/graphql/schemabuilder"
-	"github.com/shyptr/graphql/system/execution"
-	"github.com/shyptr/graphql/system/introspection"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -367,17 +367,20 @@ func TestMergeSchema(t *testing.T) {
 	RegisterPerson(builder2)
 	RegisterOperations(builder2)
 
-	schemaJSON1, err := introspection.ComputeSchemaJSON(builder1)
+	schema1 := builder1.MustBuild()
+	introspection.AddIntrospectionToSchema(schema1)
+	schemaJSON1, err := introspection.ComputeSchemaJSON(schema1)
 	assert.Equal(t, errors2.MultiError(nil), err)
-	schemaJSON2, err := introspection.ComputeSchemaJSON(builder2)
+	schemaJSON2, err := introspection.ComputeSchemaJSON(builder2.MustBuild())
 	assert.Equal(t, errors2.MultiError(nil), err)
 
-	schema, err2 := federation.ConvertSchema(map[string]string{
+	schema, err := federation.ConvertSchema(map[string]string{
 		"one": string(schemaJSON1),
 		"two": string(schemaJSON2),
 	})
-	assert.NoError(t, err2)
-	_, err2 = federation.MustPlan(schema, execution.Params{Query: `{
+	assert.NoError(t, err)
+	planer, _ := federation.NewPlaner(schema)
+	_, err = federation.MustPlan(planer, execution.Params{Query: `{
   human(id:"1000"){
 		id
 		name
@@ -388,5 +391,5 @@ all{
     Name
   }
 }`})
-	assert.NoError(t, err2)
+	assert.NoError(t, err)
 }

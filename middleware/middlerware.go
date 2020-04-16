@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/shyptr/graphql/context"
+	"github.com/shyptr/graphql"
 	"net"
 	"net/http/httputil"
 	"os"
@@ -9,8 +9,8 @@ import (
 	"time"
 )
 
-func Recovery() context.HandlerFunc {
-	return func(ctx *context.Context) {
+func Recovery() graphql.HandlerFunc {
+	return func(ctx *graphql.Context) {
 		logger := ctx.Logger
 		defer func() {
 			if err := recover(); err != nil {
@@ -41,8 +41,8 @@ func Recovery() context.HandlerFunc {
 	}
 }
 
-func Logger() context.HandlerFunc {
-	return func(ctx *context.Context) {
+func Logger() graphql.HandlerFunc {
+	return func(ctx *graphql.Context) {
 		startTime := time.Now()
 		logger := ctx.Logger
 		ctx.Set("logger", logger)

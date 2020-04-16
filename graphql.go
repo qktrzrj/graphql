@@ -2,26 +2,24 @@ package graphql
 
 import (
 	"encoding/json"
-	"github.com/shyptr/graphql/context"
+	"github.com/shyptr/graphql/ast"
 	"github.com/shyptr/graphql/errors"
-	"github.com/shyptr/graphql/system"
-	"github.com/shyptr/graphql/system/ast"
-	"github.com/shyptr/graphql/system/execution"
-	"github.com/shyptr/graphql/system/validation"
+	"github.com/shyptr/graphql/execution"
+	"github.com/shyptr/graphql/internal"
 	"net/http"
 )
 
-func Use(mm ...context.HandlerFunc) {
-	context.Ctx.HandlersChain = append(context.Ctx.HandlersChain, mm...)
+func Use(mm ...HandlerFunc) {
+	Ctx.HandlersChain = append(Ctx.HandlersChain, mm...)
 }
 
 type Handler struct {
-	Schema   *system.Schema
+	Schema   *internal.Schema
 	Executor *execution.Executor
-	ctx      *context.Context
+	ctx      *Context
 }
 
-// Response represents a typical response of a GraphQL server. It may be encoded to JSON directly or
+// Resp represents a typical response of a GraphQL server. It may be encoded to JSON directly or
 // it may be further processed to a custom response type, for example to include custom error data.
 // Errors are intentionally serialized first based on the advice in https://github.com/facebook/graphql/commit/7b40390d48680b15cb93e02d46ac5eb249689876#diff-757cea6edf0288677a9eea4cfc801d87R107
 type Response struct {
@@ -31,7 +29,7 @@ type Response struct {
 }
 
 // HTTPHandler implements the handler required for executing the graphql queries and mutations
-func HTTPHandler(schema *system.Schema) http.Handler {
+func HTTPHandler(schema *internal.Schema) http.Handler {
 	h := &Handler{
 		Schema:   schema,
 		Executor: &execution.Executor{},
@@ -41,15 +39,15 @@ func HTTPHandler(schema *system.Schema) http.Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := *context.Ctx
-	ctx.Writer, ctx.Request = &context.Response{ResponseWriter: w}, r
+	ctx := *Ctx
+	ctx.Writer, ctx.Request = &Resp{ResponseWriter: w}, r
 	h.ctx = &ctx
 	ctx.HandlersChain = append(ctx.HandlersChain, execute(h))
 	ctx.Next()
 }
 
-func execute(handler *Handler) context.HandlerFunc {
-	return func(ctx *context.Context) {
+func execute(handler *Handler) HandlerFunc {
+	return func(ctx *Context) {
 		if ctx.Request.Method == http.MethodOptions {
 			return
 		}
@@ -79,22 +77,22 @@ func execute(handler *Handler) context.HandlerFunc {
 				return
 			}
 			ctx.Writer.WriteHeader(http.StatusOK)
-			ctx.Writer.Header().Set("Content-Type", "application/json")
+			ctx.Writer.Header().Set("Content-Fn", "application/json")
 			ctx.Writer.Write(responseJSON)
 		}()
-		doc, parseErr := system.Parse(param.Query)
+		doc, parseErr := internal.Parse(param.Query)
 		if parseErr != nil {
-			exeErr = []*errors.GraphQLError{parseErr}
+			exeErr = []*errors.GraphQLError{parseErr.(*errors.GraphQLError)}
 			return
 		}
-		exeErr = validation.Validate(handler.Schema, doc, param.Variables, ctx.MaxDepth)
-		if len(exeErr) > 0 {
-			return
-		}
+		//exeErr = validation.Validate(handler.Schema, doc, param.Variables, ctx.MaxDepth)
+		//if len(exeErr) > 0 {
+		//	return
+		//}
 
-		operationType, selectionSet, applyErr := execution.ApplySelectionSet(doc, param.OperationName, param.Variables)
+		operationType, selectionSet, applyErr := execution.ApplySelectionSet(handler.Schema, doc, param.OperationName, param.Variables)
 		if applyErr != nil {
-			exeErr = []*errors.GraphQLError{applyErr}
+			exeErr = []*errors.GraphQLError{applyErr.(*errors.GraphQLError)}
 			return
 		}
 		ctx.Method = operationType

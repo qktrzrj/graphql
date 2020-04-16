@@ -62,7 +62,7 @@ add "&raw" to the end of the URL within a browser.
             method:"post",
             headers: {
                 'Accept': 'application/json',
-                'Content-Type': 'application/json'
+                'Content-Fn': 'application/json'
             },
             body: JSON.stringify(graphQLParams),
             credentials: 'include',
