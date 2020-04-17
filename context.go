@@ -34,7 +34,7 @@ type Context struct {
 var Ctx = &Context{
 	Request:               nil,
 	Writer:                nil,
-	keys:                  map[interface{}]interface{}{},
+	keys:                  nil,
 	MaxDepth:              50,
 	Logger:                log.New(os.Stderr, "", 0),
 	useStringDescriptions: false,

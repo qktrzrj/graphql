@@ -42,6 +42,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := *Ctx
 	ctx.Writer, ctx.Request = &Resp{ResponseWriter: w}, r
 	h.ctx = &ctx
+	ctx.keys = make(map[interface{}]interface{})
 	ctx.HandlersChain = append(ctx.HandlersChain, execute(h))
 	ctx.Next()
 }
