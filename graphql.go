@@ -77,7 +77,7 @@ func execute(handler *Handler) HandlerFunc {
 				return
 			}
 			ctx.Writer.WriteHeader(http.StatusOK)
-			ctx.Writer.Header().Set("Content-Fn", "application/json")
+			ctx.Writer.Header().Set("Content-Type", "application/json")
 			ctx.Writer.Write(responseJSON)
 		}()
 		doc, parseErr := internal.Parse(param.Query)
