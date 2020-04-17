@@ -161,11 +161,11 @@ func (s *Object) FieldFunc(name string, fn interface{}, options ...interface{}) 
 		case afterBuildFunc:
 			resolve.buildChain = append(resolve.buildChain, opt)
 		case ExecuteFunc:
-			resolve.handleChain = append(resolve.executeChain, opt)
+			resolve.handleChain = append(resolve.handleChain, opt)
 		case string:
 			resolve.desc = opt
 		case FieldFuncOption:
-			resolve.executeChain = append(resolve.handleChain, opt)
+			resolve.executeChain = append(resolve.executeChain, opt)
 		default:
 			panic("only received string or FieldFuncOption interface for options")
 		}
