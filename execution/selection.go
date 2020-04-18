@@ -207,6 +207,15 @@ func parseSelectionSet(schema *internal.Schema, t internal.NamedType, input *ast
 				alias = selection.Alias.Name
 			}
 
+			if alias == "__typename" {
+				selections = append(selections, &internal.Selection{
+					Name:  alias,
+					Alias: alias,
+					Loc:   selection.Loc,
+				})
+				continue
+			}
+
 			f := fields(t)[selection.Name.Name]
 			if f == nil {
 				var names []string
