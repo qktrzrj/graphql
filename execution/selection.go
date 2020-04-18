@@ -49,9 +49,13 @@ func ApplySelectionSet(schema *internal.Schema, document *internal.Document, ope
 	if op == nil {
 		return "", nil, errors.New("no operation")
 	}
+	var opName string
+	if op.Name != nil {
+		opName = opName
+	}
 	if op.Operation == "subscription" && len(op.SelectionSet.Selections) != 1 {
-		if op.Name != nil && op.Name.Name != "" {
-			return "", nil, printErr(op.Loc, "Single root field", `Subscription "%s" must select only one top level field.`, op.Name.Name)
+		if opName != "" {
+			return "", nil, printErr(op.Loc, "Single root field", `Subscription "%s" must select only one top level field.`, opName)
 		} else {
 			return "", nil, printErr(op.Loc, "Single root field", "Anonymous Subscription must select only one top level field.")
 		}
@@ -98,7 +102,7 @@ func ApplySelectionSet(schema *internal.Schema, document *internal.Document, ope
 			return "", nil, printErr(v.Loc, "Variables Are Input Types", `Variable "$%s" cannot be non-input type "%s".`, variableName, v.Type.String())
 		}
 		if value, ok := vars[variableName]; !ok {
-			return "", nil, printErr(v.Loc, "NoUndefinedVariables", "Variable %q is not defined%s.", variableName, op.Name.Name)
+			return "", nil, printErr(v.Loc, "NoUndefinedVariables", "Variable %q is not defined%s.", variableName, opName)
 		} else if ok && value == nil {
 			if v.DefaultValue != nil {
 				value, err := internal.ValueToJson(v.DefaultValue, nil)
@@ -130,7 +134,7 @@ func ApplySelectionSet(schema *internal.Schema, document *internal.Document, ope
 				return "", nil, printErr(v.Loc, "Variables Are Input Types", `Variable "$%s" cannot be non-input type "%s".`, variableName, v.Type.String())
 			}
 			if value, ok := vars[variableName]; !ok {
-				return "", nil, printErr(v.Loc, "NoUndefinedVariables", "Variable %q is not defined%s.", variableName, op.Name.Name)
+				return "", nil, printErr(v.Loc, "NoUndefinedVariables", "Variable %q is not defined%s.", variableName, opName)
 			} else if ok && value == nil && v.DefaultValue != nil {
 				value, err := internal.ValueToJson(v.DefaultValue, nil)
 				if err != nil {
