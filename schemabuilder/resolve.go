@@ -99,9 +99,8 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ internal.Type) erro
 				return nil, nil
 			}
 			v := reflect.ValueOf(value)
-			vtyp := v.Type()
 			if v.Kind() != reflect.Slice {
-				if resolve, ok := sb.cacheTypes[vtyp]; ok {
+				if resolve, ok := sb.cacheTypes[src.Elem()]; ok {
 					if value, err := resolve(value); err == nil {
 						return []interface{}{value}, nil
 					} else {
@@ -113,7 +112,7 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ internal.Type) erro
 				var res []interface{}
 				for i := 0; i < v.Len(); i++ {
 					val := v.Index(i)
-					if resolve, ok := sb.cacheTypes[val.Type()]; ok {
+					if resolve, ok := sb.cacheTypes[src.Elem()]; ok {
 						if value, err := resolve(val.Interface()); err == nil {
 							res = append(res, value)
 						} else {
@@ -123,7 +122,7 @@ func (sb *schemaBuilder) getArgResolve(src reflect.Type, typ internal.Type) erro
 						return nil, fmt.Errorf("unexpected type %s", src.String())
 					}
 				}
-				return nil, nil
+				return res, nil
 			}
 		}
 		return nil
