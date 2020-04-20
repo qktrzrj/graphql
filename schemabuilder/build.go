@@ -375,7 +375,7 @@ func (sb *schemaBuilder) buildStruct(typ reflect.Type) error {
 }
 
 func (sb *schemaBuilder) buildField(field reflect.StructField) (*internal.Field, error) {
-	skip, nonnull, name, desc := parseFieldTag(field)
+	skip, null, nonnull, name, desc := parseFieldTag(field)
 	if skip {
 		return nil, nil
 	}
@@ -389,6 +389,9 @@ func (sb *schemaBuilder) buildField(field reflect.StructField) (*internal.Field,
 	}
 	if nonnull {
 		fieldTyp = &internal.NonNull{Type: fieldTyp}
+	}
+	if nof, ok := fieldTyp.(*internal.NonNull); ok && null {
+		fieldTyp = nof.Type
 	}
 	return &internal.Field{
 		Name: name,

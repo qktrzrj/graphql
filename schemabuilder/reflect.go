@@ -13,7 +13,7 @@ type structFields struct {
 	nameIndex map[string]int
 }
 
-func parseFieldTag(field reflect.StructField) (skip, nonnull bool, name, desc string) {
+func parseFieldTag(field reflect.StructField) (skip, null, nonnull bool, name, desc string) {
 	if !ast.IsExported(field.Name) {
 		skip = true
 		return
@@ -34,6 +34,7 @@ func parseFieldTag(field reflect.StructField) (skip, nonnull bool, name, desc st
 	}
 	if len(split) > 2 {
 		nonnull = split[2] == "nonnull"
+		null = split[2] == "null"
 	}
 	return
 }

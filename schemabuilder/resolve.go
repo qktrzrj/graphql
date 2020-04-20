@@ -15,7 +15,7 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*internal.In
 	}
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		skip, nonnull, name, desc := parseFieldTag(field)
+		skip, null, nonnull, name, desc := parseFieldTag(field)
 		if skip {
 			continue
 		}
@@ -25,6 +25,9 @@ func (sb *schemaBuilder) getArguments(typ reflect.Type) (map[string]*internal.In
 		}
 		if nonnull {
 			fieldTyp = &internal.NonNull{Type: fieldTyp}
+		}
+		if nof, ok := fieldTyp.(*internal.NonNull); ok && null {
+			fieldTyp = nof.Type
 		}
 		err = sb.getArgResolve(field.Type, fieldTyp)
 		if err != nil {
@@ -144,7 +147,7 @@ func (sb *schemaBuilder) converToStruct(typ reflect.Type) resolveFunc {
 		conver := make(map[string]interface{})
 		for i := 0; i < typ.NumField(); i++ {
 			field := typ.Field(i)
-			skip, _, name, _ := parseFieldTag(typ.Field(i))
+			skip, _, _, name, _ := parseFieldTag(typ.Field(i))
 			if skip {
 				continue
 			}
