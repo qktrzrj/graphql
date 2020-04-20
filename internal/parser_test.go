@@ -6,7 +6,6 @@ import (
 	"github.com/shyptr/graphql/errors"
 	"github.com/shyptr/graphql/internal"
 	"github.com/shyptr/graphql/kinds"
-	"github.com/shyptr/graphql/system/__test__"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
@@ -108,11 +107,6 @@ func TestParser(t *testing.T) {
 		assert.Equal(t, NilGraphQLError, err)
 		assert.Equal(t, `Has a \u0A0A multi-byte character.`, doc.Definition[0].(*ast.OperationDefinition).SelectionSet.
 			Selections[0].(*ast.Field).Arguments[0].Value.GetValue())
-	})
-
-	t.Run("parses kitchen sink", func(t *testing.T) {
-		_, err := internal.ParseDocument(string(__test__.KitchenSinkQuery))
-		assert.Equal(t, NilGraphQLError, err)
 	})
 
 	t.Run("allows non-keywords anywhere a Name is allowed", func(t *testing.T) {
