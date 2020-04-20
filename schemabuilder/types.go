@@ -2,6 +2,7 @@ package schemabuilder
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -737,6 +738,168 @@ var AnyScalar = &Scalar{
 	},
 }
 
+var NullString = &Scalar{
+	Name: "NullString",
+	Desc: "Alias For String",
+	Type: sql.NullString{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		switch value := value.(type) {
+		case sql.NullString:
+			return value.String, nil
+		case string:
+			return value, nil
+		default:
+			return nil, fmt.Errorf("expected sql.NullString but got %v", value)
+		}
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		str, ok := value.(string)
+		if !ok {
+			if value == nil {
+				return sql.NullString{Valid: false, String: ""}, nil
+			}
+			return nil, fmt.Errorf("expected string value for sql.NullString, but got %v", value)
+		}
+		return sql.NullString{Valid: true, String: str}, nil
+	},
+}
+
+var NullTime = &Scalar{
+	Name: "NullTime",
+	Desc: "Alias For Time",
+	Type: sql.NullTime{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		switch value := value.(type) {
+		case sql.NullTime:
+			return value.Time, nil
+		case time.Time:
+			return value, nil
+		default:
+			return nil, fmt.Errorf("expected sql.NullTime but got %v", value)
+		}
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		t, ok := value.(time.Time)
+		if !ok {
+			if value == nil {
+				return sql.NullTime{Valid: false, Time: time.Time{}}, nil
+			}
+			return nil, fmt.Errorf("expected time value for sql.NullTime, but got %v", value)
+		}
+		return sql.NullTime{Valid: true, Time: t}, nil
+	},
+}
+
+var NullBool = &Scalar{
+	Name: "NullBool",
+	Desc: "Alias For Bool",
+	Type: sql.NullBool{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		switch value := value.(type) {
+		case sql.NullBool:
+			return value.Bool, nil
+		case bool:
+			return value, nil
+		default:
+			return nil, fmt.Errorf("expected sql.NullBool but got %v", value)
+		}
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		t, ok := value.(bool)
+		if !ok {
+			if value == nil {
+				return sql.NullBool{Valid: false, Bool: false}, nil
+			}
+			return nil, fmt.Errorf("expected bool value for sql.NullBool, but got %v", value)
+		}
+		return sql.NullBool{Valid: true, Bool: t}, nil
+	},
+}
+
+var NullFloat = &Scalar{
+	Name: "NullFloat",
+	Desc: "Alias For Float",
+	Type: sql.NullFloat64{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		switch value := value.(type) {
+		case sql.NullFloat64:
+			return value.Float64, nil
+		case float64:
+			return value, nil
+		default:
+			return nil, fmt.Errorf("expected sql.NullBool but got %v", value)
+		}
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		t, ok := value.(float64)
+		if !ok {
+			if value == nil {
+				return sql.NullFloat64{Valid: false, Float64: 0}, nil
+			}
+			return nil, fmt.Errorf("expected float value for sql.NullFloat, but got %v", value)
+		}
+		return sql.NullFloat64{Valid: true, Float64: t}, nil
+	},
+}
+
+var NullInt64 = &Scalar{
+	Name: "NullInt64",
+	Desc: "Alias For Int64",
+	Type: sql.NullInt64{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		switch value := value.(type) {
+		case sql.NullInt64:
+			return value.Int64, nil
+		case int64, int:
+			return value, nil
+		default:
+			return nil, fmt.Errorf("expected sql.NullInt64 but got %v", value)
+		}
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		t, ok := value.(float64)
+		if !ok {
+			if value == nil {
+				return sql.NullInt64{Valid: false, Int64: 0}, nil
+			}
+			return nil, fmt.Errorf("expected int value for sql.NullInt32, but got %v", value)
+		}
+		if t > math.MaxInt64 || t < math.MinInt64 {
+			return nil, fmt.Errorf("value not in int64 scope")
+		}
+		return sql.NullInt64{Valid: true, Int64: int64(t)}, nil
+	},
+}
+
+var NullInt32 = &Scalar{
+	Name: "NullInt32",
+	Desc: "Alias For Int32",
+	Type: sql.NullInt32{},
+	Serialize: func(value interface{}) (interface{}, error) {
+		switch value := value.(type) {
+		case sql.NullInt32:
+			return value.Int32, nil
+		case int32, int:
+			return value, nil
+		default:
+			return nil, fmt.Errorf("expected sql.NullInt32 but got %v", value)
+		}
+	},
+	ParseValue: func(value interface{}) (interface{}, error) {
+		t, ok := value.(float64)
+		if !ok {
+			if value == nil {
+				return sql.NullInt32{Valid: false, Int32: 0}, nil
+			}
+			return nil, fmt.Errorf("expected int value for sql.NullInt32, but got %v", value)
+		}
+		if t > math.MaxInt32 || t < math.MinInt32 {
+			return nil, fmt.Errorf("value not in int32 scope")
+		}
+		return sql.NullInt32{Valid: true, Int32: int32(t)}, nil
+	},
+}
+
 type includeArg struct {
 	If bool `graphql:"if;Included when true."`
 }
@@ -767,7 +930,7 @@ var IncludeDirective = &Directive{
 var SkipDirective = &Directive{
 	Name: "skip",
 	Desc: "Directs the executor to skip this field or fragment when the `if` argument is true.",
-	Fn: func(ctx context.Context, args includeArg, fn DirectiveFn) (bool, interface{}, error) {
+	Fn: func(ctx context.Context, args skipArg, fn DirectiveFn) (bool, interface{}, error) {
 		if args.If {
 			return false, nil, nil
 		}
