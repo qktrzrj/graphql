@@ -45,6 +45,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx.keys = make(map[interface{}]interface{})
 	ctx.HandlersChain = append(ctx.HandlersChain, execute(h))
 	ctx.Next()
+	if ctx.Writer.status == 0 {
+		ctx.Writer.WriteHeader(http.StatusOK)
+	}
 }
 
 func execute(handler *Handler) HandlerFunc {
@@ -77,7 +80,6 @@ func execute(handler *Handler) HandlerFunc {
 				ctx.ServerError(err.Error(), http.StatusInternalServerError)
 				return
 			}
-			ctx.Writer.WriteHeader(http.StatusOK)
 			ctx.Writer.Header().Set("Content-Type", "application/json")
 			ctx.Writer.Write(responseJSON)
 		}()
