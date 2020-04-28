@@ -3,9 +3,12 @@ package schemabuilder
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/go-playground/validator/v10"
 	"github.com/shyptr/graphql/internal"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -775,6 +778,13 @@ func (funcCtx *funcContext) prepareResolveArgs(sb *schemaBuilder, source interfa
 			if validate != nil {
 				err = validate.Struct(args)
 				if err != nil {
+					if translator != nil {
+						es := make([]string, len(err.(validator.ValidationErrors)))
+						for i, e := range err.(validator.ValidationErrors) {
+							es[i] = e.Translate(translator)
+						}
+						return nil, errors.New(strings.Join(es, ";"))
+					}
 					return nil, err
 				}
 			}
