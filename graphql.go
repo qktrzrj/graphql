@@ -6,7 +6,9 @@ import (
 	"github.com/shyptr/graphql/errors"
 	"github.com/shyptr/graphql/execution"
 	"github.com/shyptr/graphql/internal"
+	"github.com/shyptr/graphql/schemabuilder"
 	"net/http"
+	"strings"
 )
 
 func Use(mm ...HandlerFunc) {
@@ -57,10 +59,52 @@ func execute(handler *Handler) HandlerFunc {
 			return
 		}
 		param := execution.Params{Context: ctx}
-		if err := json.NewDecoder(ctx.Request.Body).Decode(&param); err != nil {
-			ctx.ServerError(err.Error(), http.StatusBadRequest)
-			return
+
+		contentType := strings.SplitN(ctx.Request.Header.Get("Content-Type"), ";", 2)[0]
+		if contentType == "multipart/form-data" {
+			if err := ctx.Request.ParseMultipartForm(200); err != nil {
+				ctx.ServerError(err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := json.Unmarshal([]byte(ctx.Request.Form.Get("operations")), &param); err != nil {
+				ctx.ServerError(err.Error(), http.StatusBadRequest)
+				return
+			}
+			var fileMap = map[string][]string{}
+			if err := json.Unmarshal([]byte(ctx.Request.Form.Get("map")), &fileMap); err != nil {
+				ctx.ServerError(err.Error(), http.StatusBadRequest)
+				return
+			}
+			if param.Variables == nil {
+				param.Variables = make(map[string]interface{})
+			}
+			for key, path := range fileMap {
+				file, header, err := ctx.Request.FormFile(key)
+				if err != nil {
+					ctx.ServerError(err.Error(), http.StatusBadRequest)
+					return
+				}
+				varPath := strings.Split(path[0], ".")[1:]
+				var index int
+				for ; index < len(varPath); index++ {
+					if index < len(varPath)-1 {
+						param.Variables[varPath[index]] = make(map[string]interface{})
+					} else {
+						param.Variables[varPath[index]] = schemabuilder.Upload{
+							File:     file,
+							Filename: header.Filename,
+							Size:     header.Size,
+						}
+					}
+				}
+			}
+		} else {
+			if err := json.NewDecoder(ctx.Request.Body).Decode(&param); err != nil {
+				ctx.ServerError(err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
+
 		ctx.OperationName = param.OperationName
 		var execute interface{}
 		var exeErr errors.MultiError

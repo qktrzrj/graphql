@@ -10,6 +10,7 @@ import (
 	"github.com/shyptr/graphql/ast"
 	"github.com/shyptr/graphql/internal"
 	"math"
+	"mime/multipart"
 	"reflect"
 	"time"
 )
@@ -897,6 +898,23 @@ var NullInt32 = &Scalar{
 			return nil, fmt.Errorf("value not in int32 scope")
 		}
 		return sql.NullInt32{Valid: true, Int32: int32(t)}, nil
+	},
+}
+
+type Upload struct {
+	File     multipart.File
+	Filename string
+	Size     int64
+}
+
+var UploadScalar = &Scalar{
+	Name: "Upload",
+	Type: Upload{},
+	Serialize: func(v interface{}) (interface{}, error) {
+		return v, nil
+	},
+	ParseValue: func(v interface{}) (interface{}, error) {
+		return v, nil
 	},
 }
 

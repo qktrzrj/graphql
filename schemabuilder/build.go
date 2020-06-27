@@ -850,4 +850,5 @@ var scalars = map[string]*Scalar{
 	"NullFloat":  NullFloat,
 	"NullInt64":  NullInt64,
 	"NullInt32":  NullInt32,
+	"Upload":     UploadScalar,
 }
