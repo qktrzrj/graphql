@@ -2,6 +2,7 @@ package graphql
 
 import (
 	"context"
+	"errors"
 	"reflect"
 )
 
@@ -29,6 +30,10 @@ const (
 	DirectiveLocationEnumValue            DirectiveLocation = "ENUM_VALUE"
 	DirectiveLocationInputObject          DirectiveLocation = "INPUT_OBJECT"
 	DirectiveLocationInputFieldDefinition DirectiveLocation = "INPUT_FIELD_DEFINITION"
+)
+
+var (
+	Skip = errors.New("skip")
 )
 
 // DefaultDeprecationReason Constant string used for default reason for a deprecation.
@@ -71,7 +76,7 @@ var IncludeDirective = &DirectiveBuilder{
 		return func(resolve FieldResolve) FieldResolve {
 			return func(ctx context.Context, source, args interface{}) (res interface{}, err error) {
 				if !input.(bool) {
-					return nil, nil
+					return nil, Skip
 				}
 				return resolve(ctx, source, args)
 			}
@@ -97,7 +102,7 @@ var SkipDirective = &DirectiveBuilder{
 		return func(resolve FieldResolve) FieldResolve {
 			return func(ctx context.Context, source, args interface{}) (res interface{}, err error) {
 				if input.(bool) {
-					return nil, nil
+					return nil, Skip
 				}
 				return resolve(ctx, source, args)
 			}
@@ -120,5 +125,12 @@ var DeprecatedDirective = &DirectiveBuilder{
 			"in [Markdown](https://daringfireball.net/projects/markdown/).",
 		Type:         reflect.TypeOf(string("")),
 		DefaultValue: DefaultDeprecationReason,
+	},
+	DirectiveFn: func(input interface{}) ResolveChain {
+		return func(resolve FieldResolve) FieldResolve {
+			return func(ctx context.Context, source, args interface{}) (res interface{}, err error) {
+				return resolve(ctx, source, args)
+			}
+		}
 	},
 }

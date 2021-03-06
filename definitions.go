@@ -16,6 +16,14 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 )
 
+type Schema struct {
+	TypeMap      map[string]NamedType
+	Directives   map[string]*Directive
+	Query        Type
+	Mutation     Type
+	Subscription Type
+}
+
 type Type interface {
 	String() string
 	IsType()
@@ -23,6 +31,25 @@ type Type interface {
 
 var _ Type = (*Scalar)(nil)
 var _ Type = (*Object)(nil)
+var _ Type = (*Interface)(nil)
+var _ Type = (*List)(nil)
+var _ Type = (*InputObject)(nil)
+var _ Type = (*NonNull)(nil)
+var _ Type = (*Enum)(nil)
+var _ Type = (*Union)(nil)
+
+type NamedType interface {
+	Type
+	TypeName() string
+	TypeDescription() string
+}
+
+var _ NamedType = (*Scalar)(nil)
+var _ NamedType = (*Object)(nil)
+var _ NamedType = (*Interface)(nil)
+var _ NamedType = (*InputObject)(nil)
+var _ NamedType = (*Enum)(nil)
+var _ NamedType = (*Union)(nil)
 
 // Scalar Type Definition
 //
@@ -37,13 +64,10 @@ type Scalar struct {
 	ParseLiteral ParseLiteralFn
 }
 
-func (s *Scalar) String() string {
-	panic("implement me")
-}
-
-func (s Scalar) IsType() {
-	panic("implement me")
-}
+func (t *Scalar) TypeName() string        { return t.Name }
+func (t *Scalar) TypeDescription() string { return t.Description }
+func (t *Scalar) String() string          { return t.Name }
+func (t Scalar) IsType()                  {}
 
 // SerializeFn is a function type for serializing a GraphQLScalar type value
 type SerializeFn func(value interface{}) (interface{}, error)
@@ -75,6 +99,11 @@ type Enum struct {
 	nameLookup   map[string]interface{}
 }
 
+func (t *Enum) TypeName() string        { return t.Name }
+func (t *Enum) TypeDescription() string { return t.Description }
+func (t *Enum) String() string          { return t.Name }
+func (t Enum) IsType()                  {}
+
 type EnumBuilder struct {
 	Name          string
 	Description   string
@@ -90,13 +119,14 @@ type EnumBuilder struct {
 type Object struct {
 	Name        string
 	Description string
+	Interfaces  map[string]*Interface
+	Fields      map[string]*Field
 }
 
-func (o *Object) String() string {
-	return o.Name
-}
-
-func (o Object) IsType() {}
+func (t *Object) TypeName() string        { return t.Name }
+func (t *Object) TypeDescription() string { return t.Description }
+func (t *Object) String() string          { return t.Name }
+func (t Object) IsType()                  {}
 
 type ObjectBuilder struct {
 	Name        string
@@ -130,9 +160,15 @@ func (o *ObjectBuilder) FieldFunc(name string, fieldResolve FieldResolve, opts .
 
 // InputObject represents the input objects passed in queries,mutations and subscriptions
 type InputObject struct {
-	Name string
-	Desc string
+	Name        string
+	Description string
+	Fields      map[string]*FieldInput
 }
+
+func (t *InputObject) TypeName() string        { return t.Name }
+func (t *InputObject) TypeDescription() string { return t.Description }
+func (t *InputObject) String() string          { return t.Name }
+func (t InputObject) IsType()                  {}
 
 type ResolveTypeFn func(ctx context.Context, value interface{}) interface{}
 
@@ -144,9 +180,14 @@ type ResolveTypeFn func(ctx context.Context, value interface{}) interface{}
 type Union struct {
 	Name        string
 	Description string
-	Types       []Type
+	Types       map[string]*Object
 	ResolveType ResolveTypeFn
 }
+
+func (t *Union) TypeName() string        { return t.Name }
+func (t *Union) TypeDescription() string { return t.Description }
+func (t *Union) String() string          { return t.Name }
+func (t Union) IsType()                  {}
 
 type UnionBuilder struct {
 	Name        string
@@ -163,10 +204,17 @@ type UnionBuilder struct {
 // all types, as well as a function to determine which type is actually used
 // when the field is resolved.
 type Interface struct {
-	Name        string
-	Description string
-	ResolveType ResolveTypeFn
+	Name          string
+	Description   string
+	ResolveType   ResolveTypeFn
+	PossibleTypes map[string]*Object
+	Fields        map[string]*Field
 }
+
+func (t *Interface) TypeName() string        { return t.Name }
+func (t *Interface) TypeDescription() string { return t.Description }
+func (t *Interface) String() string          { return t.Name }
+func (t Interface) IsType()                  {}
 
 type InterfaceBuilder struct {
 	Name          string
@@ -177,7 +225,36 @@ type InterfaceBuilder struct {
 	Fields        map[string]*FieldBuilder
 }
 
+// A list is a kind of type marker, a wrapping type which points to another type.
+// Lists are often created within the context of defining the fields of an object type.
+type List struct {
+	Type Type
+}
+
+func (t *List) String() string { return fmt.Sprintf("[%s]", t.Type.String()) }
+func (t *List) IsType()        {}
+
+// A non-null is a kind of type marker, a wrapping type which points to another type.
+// Non-null types enforce that their values are never null and
+// can ensure an error is raised if this ever occurs during a request.
+// It is useful for fields which you can make a strong guarantee on non-nullability,
+// for example usually the id field of a database row will never be null.
+type NonNull struct {
+	Type Type
+}
+
+func (t *NonNull) String() string { return fmt.Sprintf("%s!", t.Type.String()) }
+func (t *NonNull) IsType()        {}
+
 type FieldResolve func(ctx context.Context, source, args interface{}) (res interface{}, err error)
+
+type Field struct {
+	Name         string
+	Description  string
+	FieldResolve FieldResolve
+	Arg          *FieldInput
+	Output       *FieldOutput
+}
 
 type FieldBuilder struct {
 	Name         string

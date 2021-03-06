@@ -369,13 +369,9 @@ func (s *SchemaBuilder) Subscription() *ObjectBuilder {
 	return s.Object(Subscription{})
 }
 
-type schemaBuilder struct {
-	types        map[reflect.Type]Type
-	cacheTypes   map[reflect.Type]ResolveTypeFn
-	objects      map[reflect.Type]*Object
-	enums        map[reflect.Type]*Enum
-	inputObjects map[reflect.Type]*InputObject
-	interfaces   map[reflect.Type]*Interface
-	scalars      map[reflect.Type]*Scalar
-	unions       map[reflect.Type]*Union
+// Build takes the schema we have built on our Query, Mutation and Subscription starting points and builds a full graphql.Schema
+// We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
+// Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
+func (s *SchemaBuilder) Build() {
+
 }
