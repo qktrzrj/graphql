@@ -5,19 +5,18 @@ import "reflect"
 type Option func(*options)
 
 type options struct {
-	name          string
-	description   string
-	serialize     SerializeFn
-	parseValue    ParseValueFn
-	parseLiteral  ParseLiteralFn
-	fieldResolve  FieldResolve
-	defaultValue  interface{}
-	nonnull       bool
-	interfaces    []reflect.Type
-	input         *FieldInputBuilder
-	output        *FieldOutputBuilder
-	resolveType   ResolveTypeFn
-	possibleTypes []reflect.Type
+	name         string
+	description  string
+	serialize    SerializeFn
+	parseValue   ParseValueFn
+	parseLiteral ParseLiteralFn
+	fieldResolve FieldResolve
+	defaultValue interface{}
+	nonnull      bool
+	interfaces   []reflect.Type
+	input        *FieldInputBuilder
+	output       *FieldOutputBuilder
+	resolveType  ResolveTypeFn
 }
 
 func Name(name string) Option {

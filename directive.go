@@ -48,6 +48,8 @@ type Directive struct {
 	Name        string
 	Description string
 	Locations   []DirectiveLocation
+	Args        *FieldInput
+	DirectiveFn DirectiveFn
 }
 
 type DirectiveBuilder struct {

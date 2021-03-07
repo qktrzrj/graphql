@@ -95,8 +95,8 @@ type ScalarBuilder struct {
 type Enum struct {
 	Name         string
 	Description  string
-	valuesLookup map[interface{}]string
-	nameLookup   map[string]interface{}
+	ValuesLookup map[interface{}]string
+	NameLookup   map[string]interface{}
 }
 
 func (t *Enum) TypeName() string        { return t.Name }
@@ -145,7 +145,7 @@ func (o *ObjectBuilder) FieldFunc(name string, fieldResolve FieldResolve, opts .
 		o(&options)
 	}
 
-	if _, ok := o.Fields[name]; ok {
+	if _, ok := o.Fields[options.name]; ok {
 		panic("duplicate field " + options.name)
 	}
 
@@ -169,6 +169,13 @@ func (t *InputObject) TypeName() string        { return t.Name }
 func (t *InputObject) TypeDescription() string { return t.Description }
 func (t *InputObject) String() string          { return t.Name }
 func (t InputObject) IsType()                  {}
+
+type InputObjectBuilder struct {
+	Name        string
+	Description string
+	Type        reflect.Type
+	Fields      map[string]*FieldInputBuilder
+}
 
 type ResolveTypeFn func(ctx context.Context, value interface{}) interface{}
 
@@ -207,6 +214,7 @@ type Interface struct {
 	Name          string
 	Description   string
 	ResolveType   ResolveTypeFn
+	Interfaces    map[string]*Interface
 	PossibleTypes map[string]*Object
 	Fields        map[string]*Field
 }
@@ -217,12 +225,11 @@ func (t *Interface) String() string          { return t.Name }
 func (t Interface) IsType()                  {}
 
 type InterfaceBuilder struct {
-	Name          string
-	Description   string
-	Type          reflect.Type
-	ResolveType   ResolveTypeFn
-	PossibleTypes []reflect.Type
-	Fields        map[string]*FieldBuilder
+	Name        string
+	Description string
+	Type        reflect.Type
+	ResolveType ResolveTypeFn
+	Fields      map[string]*FieldBuilder
 }
 
 // A list is a kind of type marker, a wrapping type which points to another type.
