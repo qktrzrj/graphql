@@ -167,7 +167,6 @@ func (sb *schemaBuilder) getInterface(rtype reflect.Type) (*Interface, error) {
 				hasOutput bool
 				hasError  bool
 				input     *FieldInput
-				output    *FieldOutput
 			)
 
 			if method.Type.NumIn() == 2 {
@@ -194,22 +193,21 @@ func (sb *schemaBuilder) getInterface(rtype reflect.Type) (*Interface, error) {
 					Type: iType,
 				}
 			}
+
+			var fType Type
 			if hasOutput {
 				outputType := method.Type.Out(0)
 				iType, err := sb.getType(outputType)
 				if err != nil {
 					return nil, err
 				}
-				output = &FieldOutput{
-					Name: outputType.Name(),
-					Type: iType,
-				}
+				fType = iType
 			}
 
 			iiface.Fields[method.Name] = &Field{
-				Name:   method.Name,
-				Arg:    input,
-				Output: output,
+				Name: method.Name,
+				Arg:  input,
+				Type: fType,
 				FieldResolve: func(ctx context.Context, source, args interface{}) (res interface{}, err error) {
 					in := []reflect.Value{reflect.ValueOf(ctx)}
 					if hasInput {
@@ -398,10 +396,7 @@ func (sb *schemaBuilder) buildStruct(rtype reflect.Type) error {
 			object.Fields[name] = &Field{
 				Name:        name,
 				Description: description,
-				Output: &FieldOutput{
-					Name: name,
-					Type: fType,
-				},
+				Type:        fType,
 				FieldResolve: func(ctx context.Context, source, args interface{}) (res interface{}, err error) {
 					sourceValue := reflect.ValueOf(source)
 					return sourceValue.FieldByIndex(field.Index).Interface(), nil

@@ -17,6 +17,7 @@ type options struct {
 	input        *FieldInputBuilder
 	output       *FieldOutputBuilder
 	resolveType  ResolveTypeFn
+	deprecated   bool
 }
 
 func Name(name string) Option {
@@ -76,9 +77,6 @@ func Interfaces(interfaces ...interface{}) Option {
 func Input(argumentType interface{}, opts ...Option) Option {
 	return func(o *options) {
 		reflectType := reflect.TypeOf(argumentType)
-		if reflectType.Kind() != reflect.Struct {
-			panic("argumentType must be a struct")
-		}
 
 		options := options{
 			name: reflectType.Name(),
@@ -100,18 +98,14 @@ func Output(outputType interface{}, opts ...Option) Option {
 	return func(o *options) {
 		reflectType := reflect.TypeOf(outputType)
 
-		options := options{
-			name: reflectType.Name(),
-		}
+		options := options{}
 		for _, o := range opts {
 			o(&options)
 		}
 
 		o.output = &FieldOutputBuilder{
-			Name:        options.name,
-			Description: options.description,
-			Type:        reflectType,
-			Nonnull:     options.nonnull,
+			Type:    reflectType,
+			Nonnull: options.nonnull,
 		}
 	}
 }
@@ -119,5 +113,11 @@ func Output(outputType interface{}, opts ...Option) Option {
 func ResolveType(fn ResolveTypeFn) Option {
 	return func(o *options) {
 		o.resolveType = fn
+	}
+}
+
+func Deprecated(deprecated bool) Option {
+	return func(o *options) {
+		o.deprecated = deprecated
 	}
 }

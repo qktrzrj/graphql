@@ -399,7 +399,7 @@ func (s *SchemaBuilder) Subscription() *ObjectBuilder {
 // Build takes the schema we have built on our Query, Mutation and Subscription starting points and builds a full graphql.Schema
 // We can use graphql.Schema to execute and run queries. Essentially we read through all the methods we've attached to our
 // Query, Mutation and Subscription Objects and ensure that those functions are returning other Objects that we can resolve in our GraphQL graph.
-func (s *SchemaBuilder) Build() (*Schema, error) {
+func (s *SchemaBuilder) build() (*Schema, error) {
 	sb := &schemaBuilder{
 		types:        make(map[reflect.Type]Type),
 		cacheTypes:   make(map[reflect.Type]ResolveTypeFn),
@@ -487,20 +487,33 @@ func (s *SchemaBuilder) Build() (*Schema, error) {
 			typeMap[named.TypeName()] = named
 		}
 	}
-	return &Schema{
+
+	schema := &Schema{
 		TypeMap:      typeMap,
 		Query:        queryTyp,
 		Mutation:     mutationTyp,
 		Subscription: subscriptionTyp,
 		Directives:   directives,
-	}, nil
+	}
+	addIntrospectionToSchema(schema)
+	return schema, nil
+}
+
+//MustBuild builds a schema and panics if an error occurs.
+func (s *SchemaBuilder) Build() (*Schema, error) {
+	schema, err := s.build()
+	if err != nil {
+		return nil, err
+	}
+	addIntrospectionToSchema(schema)
+	return schema, nil
 }
 
 //MustBuild builds a schema and panics if an error occurs.
 func (s *SchemaBuilder) MustBuild() *Schema {
-	built, err := s.Build()
+	schema, err := s.Build()
 	if err != nil {
 		panic(err)
 	}
-	return built
+	return schema
 }

@@ -152,6 +152,7 @@ func (o *ObjectBuilder) FieldFunc(name string, fieldResolve FieldResolve, opts .
 	o.Fields[options.name] = &FieldBuilder{
 		Name:         options.name,
 		Description:  options.description,
+		Deprecated:   options.deprecated,
 		FieldResolve: fieldResolve,
 		Arg:          options.input,
 		Output:       options.output,
@@ -258,14 +259,16 @@ type FieldResolve func(ctx context.Context, source, args interface{}) (res inter
 type Field struct {
 	Name         string
 	Description  string
+	Deprecated   bool
+	Type         Type
 	FieldResolve FieldResolve
 	Arg          *FieldInput
-	Output       *FieldOutput
 }
 
 type FieldBuilder struct {
 	Name         string
 	Description  string
+	Deprecated   bool
 	FieldResolve FieldResolve
 	Arg          *FieldInputBuilder
 	Output       *FieldOutputBuilder
@@ -285,17 +288,9 @@ type FieldInputBuilder struct {
 	DefaultValue interface{}
 }
 
-type FieldOutput struct {
-	Name        string
-	Description string
-	Type        Type
-}
-
 type FieldOutputBuilder struct {
-	Name        string
-	Description string
-	Type        reflect.Type
-	Nonnull     bool
+	Type    reflect.Type
+	Nonnull bool
 }
 
 var Boolean = &ScalarBuilder{
