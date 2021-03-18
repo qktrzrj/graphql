@@ -334,6 +334,7 @@ func (sb *schemaBuilder) buildStruct(rtype reflect.Type) error {
 		object := &Object{
 			Name:        obj.Name,
 			Description: obj.Description,
+			ReflectType: obj.Type,
 			Interfaces:  make(map[string]*Interface, len(obj.Interface)),
 			Fields:      make(map[string]*Field),
 		}
@@ -401,6 +402,55 @@ func (sb *schemaBuilder) buildStruct(rtype reflect.Type) error {
 					sourceValue := reflect.ValueOf(source)
 					return sourceValue.FieldByIndex(field.Index).Interface(), nil
 				},
+			}
+		}
+
+		for _, field := range obj.Fields {
+			fType, err := sb.getType(field.Output.Type)
+			if err != nil {
+				return err
+			}
+			if field.Output.Nonnull {
+				fType = &NonNull{fType}
+			}
+
+			aType, err := sb.getType(field.Arg.Type)
+			if err != nil {
+				return err
+			}
+
+			directives := make(map[string]*Directive)
+			for _, directive := range field.Directives {
+				aType, err := sb.getType(directive.Args.Type)
+				if err != nil {
+					return err
+				}
+				directives[directive.Name] = &Directive{
+					Name:        directive.Name,
+					Description: directive.Description,
+					Locations:   directive.Locations,
+					Args: &FieldInput{
+						Name:         directive.Args.Name,
+						Description:  directive.Args.Description,
+						Type:         aType,
+						DefaultValue: directive.Args.DefaultValue,
+					},
+					DirectiveFn: directive.DirectiveFn,
+				}
+			}
+			object.Fields[field.Name] = &Field{
+				Name:         field.Name,
+				Description:  field.Description,
+				Deprecated:   field.Deprecated,
+				Type:         fType,
+				FieldResolve: field.FieldResolve,
+				Arg: &FieldInput{
+					Name:         field.Arg.Name,
+					Description:  field.Arg.Description,
+					Type:         aType,
+					DefaultValue: field.Arg.DefaultValue,
+				},
+				Directives: directives,
 			}
 		}
 	}

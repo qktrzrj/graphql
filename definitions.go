@@ -22,6 +22,7 @@ type Schema struct {
 	Query        Type
 	Mutation     Type
 	Subscription Type
+	astSchema    *ast.Schema
 }
 
 type Type interface {
@@ -50,6 +51,29 @@ var _ NamedType = (*Interface)(nil)
 var _ NamedType = (*InputObject)(nil)
 var _ NamedType = (*Enum)(nil)
 var _ NamedType = (*Union)(nil)
+
+func IsInputType(typ Type) bool {
+	switch t := typ.(type) {
+	case *Scalar, *InputObject, *Enum:
+		return true
+	case *List:
+		return IsInputType(t.Type)
+	case *NonNull:
+		return IsInputType(t.Type)
+	}
+	return false
+}
+
+func IsBasicType(typ Type) bool {
+	switch t := typ.(type) {
+	case *Scalar, *Enum, *Interface:
+		return true
+	case *List:
+		return IsBasicType(t.Type)
+	default:
+		return false
+	}
+}
 
 // Scalar Type Definition
 //
@@ -119,6 +143,7 @@ type EnumBuilder struct {
 type Object struct {
 	Name        string
 	Description string
+	ReflectType reflect.Type
 	Interfaces  map[string]*Interface
 	Fields      map[string]*Field
 }
@@ -138,8 +163,8 @@ type ObjectBuilder struct {
 
 func (o *ObjectBuilder) FieldFunc(name string, fieldResolve FieldResolve, opts ...Option) {
 	options := options{
-		name:         name,
-		fieldResolve: fieldResolve,
+		name:       name,
+		directives: make(map[string]*DirectiveBuilder),
 	}
 	for _, o := range opts {
 		o(&options)
@@ -156,6 +181,7 @@ func (o *ObjectBuilder) FieldFunc(name string, fieldResolve FieldResolve, opts .
 		FieldResolve: fieldResolve,
 		Arg:          options.input,
 		Output:       options.output,
+		Directives:   options.directives,
 	}
 }
 
@@ -178,7 +204,7 @@ type InputObjectBuilder struct {
 	Fields      map[string]*FieldInputBuilder
 }
 
-type ResolveTypeFn func(ctx context.Context, value interface{}) interface{}
+type ResolveTypeFn func(ctx context.Context, value interface{}) *Object
 
 // Union Type Definition
 //
@@ -263,6 +289,7 @@ type Field struct {
 	Type         Type
 	FieldResolve FieldResolve
 	Arg          *FieldInput
+	Directives   map[string]*Directive
 }
 
 type FieldBuilder struct {
@@ -270,6 +297,7 @@ type FieldBuilder struct {
 	Description  string
 	Deprecated   bool
 	FieldResolve FieldResolve
+	Directives   map[string]*DirectiveBuilder
 	Arg          *FieldInputBuilder
 	Output       *FieldOutputBuilder
 }

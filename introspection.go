@@ -183,6 +183,26 @@ func (s *introspection) registerType(schema *SchemaBuilder) {
 					})
 
 					sort.Slice(args, func(i, j int) bool { return args[i].Name < args[j].Name })
+
+					directives := make([]__Directive, len(field.Directives))
+					for _, directive := range field.Directives {
+						defaultValue := fmt.Sprintf("%v", directive.Args.DefaultValue)
+						directives = append(directives, __Directive{
+							Name:        directive.Name,
+							Description: directive.Description,
+							Locations:   directive.Locations,
+							Args: []__InputValue{
+								{
+									Name:         directive.Args.Name,
+									Description:  directive.Args.Description,
+									DefaultValue: &defaultValue,
+									Type:         __Type{OfType: directive.Args.Type},
+								},
+							},
+							IsDeprecated: false,
+						})
+					}
+
 					fields = append(fields, __Field{
 						Name:              name,
 						Description:       &field.Description,
@@ -190,6 +210,7 @@ func (s *introspection) registerType(schema *SchemaBuilder) {
 						Type:              __Type{OfType: field.Type},
 						IsDeprecated:      field.Deprecated,
 						DeprecationReason: "",
+						Directives:        directives,
 					})
 				}
 			case *Interface:
@@ -327,6 +348,7 @@ type __Field struct {
 	Type              __Type         `graphql:"type"`
 	IsDeprecated      bool           `graphql:"isDeprecated"`
 	DeprecationReason string         `graphql:"deprecationReason"`
+	Directives        []__Directive  `graphql:"directives"`
 }
 
 func (s *introspection) registerField(schema *SchemaBuilder) {

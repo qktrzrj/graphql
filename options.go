@@ -10,7 +10,7 @@ type options struct {
 	serialize    SerializeFn
 	parseValue   ParseValueFn
 	parseLiteral ParseLiteralFn
-	fieldResolve FieldResolve
+	directives   map[string]*DirectiveBuilder
 	defaultValue interface{}
 	nonnull      bool
 	interfaces   []reflect.Type
@@ -119,5 +119,13 @@ func ResolveType(fn ResolveTypeFn) Option {
 func Deprecated(deprecated bool) Option {
 	return func(o *options) {
 		o.deprecated = deprecated
+	}
+}
+
+func Directives(directives ...*DirectiveBuilder) Option {
+	return func(o *options) {
+		for _, directive := range directives {
+			o.directives[directive.Name] = directive
+		}
 	}
 }
